@@ -1,0 +1,19 @@
+# Core LangChain dependencies
+langchain>=1.0.0
+langchain-core>=1.0.0
+langchain-openai>=1.0.0
+
+# Data validation
+pydantic>=2.0
+
+# Configuration
+python-dotenv>=1.0
+
+# HTML report generation
+jinja2>=3.1.0
+
+# Metadata CSV reading
+pandas>=2.0.0
+
+# Optional: for DeepSeek support (uses OpenAI-compatible API)
+# langchain-community>=0.3.0

@@ -1,0 +1,150 @@
+{
+  "n_samples": 6,
+  "n_genes_filtered": 100,
+  "library_sizes": {
+    "ctrl_1": 114263,
+    "ctrl_2": 101928,
+    "ctrl_3": 105886,
+    "treat_1": 231591,
+    "treat_2": 237914,
+    "treat_3": 186385
+  },
+  "detected_genes": {
+    "ctrl_1": 100,
+    "ctrl_2": 100,
+    "ctrl_3": 100,
+    "treat_1": 100,
+    "treat_2": 100,
+    "treat_3": 100
+  },
+  "pca_variance_pct": {
+    "PC1": 33.3,
+    "PC2": 21.2,
+    "PC3": 17.7,
+    "PC4": 15.6
+  },
+  "sample_correlation": [
+    {
+      "sample": "ctrl_1",
+      "correlations": {
+        "ctrl_1": 1,
+        "ctrl_2": 0.4416,
+        "ctrl_3": 0.2284,
+        "treat_1": 0.3495,
+        "treat_2": 0.3468,
+        "treat_3": 0.4427
+      }
+    },
+    {
+      "sample": "ctrl_2",
+      "correlations": {
+        "ctrl_1": 0.4416,
+        "ctrl_2": 1,
+        "ctrl_3": 0.4347,
+        "treat_1": 0.3891,
+        "treat_2": 0.4025,
+        "treat_3": 0.4802
+      }
+    },
+    {
+      "sample": "ctrl_3",
+      "correlations": {
+        "ctrl_1": 0.2284,
+        "ctrl_2": 0.4347,
+        "ctrl_3": 1,
+        "treat_1": 0.3882,
+        "treat_2": 0.4447,
+        "treat_3": 0.449
+      }
+    },
+    {
+      "sample": "treat_1",
+      "correlations": {
+        "ctrl_1": 0.3495,
+        "ctrl_2": 0.3891,
+        "ctrl_3": 0.3882,
+        "treat_1": 1,
+        "treat_2": 0.6525,
+        "treat_3": 0.6002
+      }
+    },
+    {
+      "sample": "treat_2",
+      "correlations": {
+        "ctrl_1": 0.3468,
+        "ctrl_2": 0.4025,
+        "ctrl_3": 0.4447,
+        "treat_1": 0.6525,
+        "treat_2": 1,
+        "treat_3": 0.5928
+      }
+    },
+    {
+      "sample": "treat_3",
+      "correlations": {
+        "ctrl_1": 0.4427,
+        "ctrl_2": 0.4802,
+        "ctrl_3": 0.449,
+        "treat_1": 0.6002,
+        "treat_2": 0.5928,
+        "treat_3": 1
+      }
+    }
+  ],
+  "outlier_flags": {
+    "1": {
+      "sample": "pairwise",
+      "metric": "sample_correlation",
+      "value": 0.2284,
+      "threshold": {
+        "lower": 0.2747,
+        "upper": 0.5785
+      }
+    },
+    "2": {
+      "sample": "pairwise",
+      "metric": "sample_correlation",
+      "value": 0.6525,
+      "threshold": {
+        "lower": 0.2747,
+        "upper": 0.5785
+      }
+    },
+    "3": {
+      "sample": "pairwise",
+      "metric": "sample_correlation",
+      "value": 0.6002,
+      "threshold": {
+        "lower": 0.2747,
+        "upper": 0.5785
+      }
+    },
+    "4": {
+      "sample": "pairwise",
+      "metric": "sample_correlation",
+      "value": 0.5928,
+      "threshold": {
+        "lower": 0.2747,
+        "upper": 0.5785
+      }
+    },
+    "treat_3": {
+      "sample": "treat_3",
+      "metric": "pca_distance",
+      "value": 6.9764,
+      "threshold": {
+        "lower": 2.7063,
+        "upper": 6.8175
+      }
+    }
+  },
+  "outlier_samples_flagged": "treat_3",
+  "plots": {
+    "pca": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//qc_plots/pca.png",
+    "heatmap": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//qc_plots/heatmap.png",
+    "mds": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//qc_plots/mds.png",
+    "dispersion": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//qc_plots/dispersion.png",
+    "library_sizes": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//qc_plots/library_sizes.png",
+    "detected_genes": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//qc_plots/detected_genes.png"
+  }
+}

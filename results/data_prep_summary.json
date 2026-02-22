@@ -1,0 +1,16 @@
+{
+  "n_samples": 6,
+  "n_genes_raw": 100,
+  "n_genes_filtered": 100,
+  "gene_id_type": "ENSEMBL",
+  "species": "human",
+  "design_variable": "condition",
+  "min_count_threshold": 10,
+  "min_samples_fraction": 0.5,
+  "sample_ids": ["ctrl_1", "ctrl_2", "ctrl_3", "treat_1", "treat_2", "treat_3"],
+  "outputs": {
+    "counts_ensembl": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//counts_ensembl.csv",
+    "id_mapping": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//id_mapping.csv",
+    "dds_rds": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//dds.rds"
+  }
+}

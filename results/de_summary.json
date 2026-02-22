@@ -1,0 +1,58 @@
+{
+  "TreatmentvsControl": {
+    "contrast_name": "TreatmentvsControl",
+    "treatment": "Treatment",
+    "control": "Control",
+    "n_sig_up": 7,
+    "n_sig_down": 0,
+    "n_total_tested": 100,
+    "top20_up_genes": [
+      {
+        "gene_id": "ENSG00000100016",
+        "log2FoldChange": 3.4103,
+        "padj": 0.0002
+      },
+      {
+        "gene_id": "ENSG00000100045",
+        "log2FoldChange": 2.7938,
+        "padj": 0.0009
+      },
+      {
+        "gene_id": "ENSG00000100011",
+        "log2FoldChange": 2.82,
+        "padj": 0.003
+      },
+      {
+        "gene_id": "ENSG00000133703",
+        "symbol": "KRAS",
+        "log2FoldChange": 2.5969,
+        "padj": 0.003
+      },
+      {
+        "gene_id": "ENSG00000181143",
+        "symbol": "MUC16",
+        "log2FoldChange": 2.3102,
+        "padj": 0.0031
+      },
+      {
+        "gene_id": "ENSG00000148737",
+        "symbol": "TCF7L2",
+        "log2FoldChange": 1.8561,
+        "padj": 0.011
+      },
+      {
+        "gene_id": "ENSG00000012048",
+        "symbol": "BRCA1",
+        "log2FoldChange": 1.8523,
+        "padj": 0.0211
+      }
+    ],
+    "top20_down_genes": [],
+    "padj_threshold": 0.05,
+    "lfc_threshold": 1,
+    "plots": {
+      "volcano": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//de_plots/TreatmentvsControl_volcano.png",
+      "ma": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results//de_plots/TreatmentvsControl_ma.png"
+    }
+  }
+}

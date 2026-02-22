@@ -1,0 +1,21 @@
+{
+  "counts_file": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/datademo/counts.csv",
+  "metadata_file": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/datademo/metadata.csv",
+  "contrasts": [
+    {
+      "name": "TreatmentvsControl",
+      "variable": "condition",
+      "treatment": "Treatment",
+      "control": "Control"
+    }
+  ],
+  "species": "human",
+  "output_dir": "/Users/CongLiu/Documents_thisMac/DESeq2Agent/results/",
+  "min_count_threshold": 10,
+  "min_samples_fraction": 0.5,
+  "padj_threshold": 0.05,
+  "lfc_threshold": 1.0,
+  "samples_to_remove": [
+    "treat_3"
+  ]
+}
