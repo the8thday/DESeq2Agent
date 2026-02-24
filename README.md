@@ -1,184 +1,228 @@
 # DESeq2Agent
 
-🧬 **LangChain-based AI Agent Framework for RNA-seq DESeq2 Analysis Interpretation**
+**End-to-end RNA-seq differential expression pipeline powered by R + LLM agents**
 
-DESeq2Agent is a multi-agent system that uses LLMs to interpret RNA-seq differential expression analysis results. It leverages LangChain's Expression Language (LCEL) for composable, type-safe chains.
+DESeq2Agent takes raw count data and metadata, runs a full DESeq2 analysis via R subprocesses, and uses LLM agents to interpret results at each stage — delivering a self-contained HTML report with embedded plots, tables, and narrative.
 
 ## Features
 
-- 🔗 **LangChain Integration**: Built on LangChain v0.3+ with LCEL for modern, composable chains
-- 🎯 **Structured Outputs**: Pydantic models for type-safe, validated outputs
-- 🤖 **5 Specialized Agents**:
-  - **DataAgent**: Experimental design understanding and metadata validation
-  - **QCAgent**: Quality control assessment and outlier detection
-  - **DEAgent**: Differential expression interpretation
-  - **PathwayAgent**: GSEA/ORA pathway analysis interpretation
-  - **ReportAgent**: Structured report generation
-- 🌐 **Multi-Provider Support**: Works with OpenAI, DeepSeek, and other OpenAI-compatible APIs
-- 📊 **Pipeline Orchestration**: Complete workflow with automatic result passing between agents
+- **True end-to-end pipeline**: raw counts CSV → HTML report, no pre-processing required
+- **R subprocess integration**: DESeq2, clusterProfiler, and QC all run as R scripts; Python orchestrates and validates
+- **4 LLM agents** with structured Pydantic outputs:
+  - **QCReviewAgent**: interprets QC metrics, decides outlier removal
+  - **DEReviewAgent**: interprets differential expression results
+  - **PathwayReviewAgent**: interprets GSEA/ORA enrichment
+  - **ReportNarrativeAgent**: synthesizes a full report narrative
+- **Interactive mode**: LLM proposes outlier removal; user confirms before DE analysis
+- **Multi-provider support**: OpenAI, DeepSeek, and any OpenAI-compatible endpoint
+- **Self-contained HTML report**: all plots base64-encoded, ~1–5 MB, no external dependencies
+
+## Requirements
+
+**Python**
+- Python ≥ 3.9
+- langchain ≥ 0.3.0, langchain-openai ≥ 0.2.0
+- pydantic ≥ 2.0, jinja2 ≥ 3.1.0, pandas ≥ 2.0.0, python-dotenv ≥ 1.0
+
+**R** (≥ 4.2, Bioconductor ≥ 3.16)
+```r
+BiocManager::install(c("DESeq2", "DEGreport", "clusterProfiler",
+                        "org.Hs.eg.db", "org.Mm.eg.db", "AnnotationDbi", "enrichplot"))
+install.packages(c("jsonlite", "ggplot2", "pheatmap", "ggrepel",
+                   "RColorBrewer", "dplyr", "tibble"))
+```
 
 ## Installation
 
 ```bash
-# Clone the repository
+git clone https://github.com/your-org/DESeq2Agent
 cd DESeq2Agent
 
-# Install dependencies
-pip install -r requirements.txt
-
-# Or install as a package
-pip install -e .
+# Install Python package (editable)
+pip install -e ".[dev]"
 ```
 
 ## Configuration
 
-1. Copy the environment template:
 ```bash
 cp .env.example .env
 ```
 
-2. Edit `.env` with your API key:
+Edit `.env`:
+
 ```env
-# For OpenAI
-OPENAI_API_KEY=sk-your-api-key-here
+# OpenAI
+OPENAI_API_KEY=sk-your-key
 OPENAI_MODEL=gpt-4o
 
-# For DeepSeek (alternative)
-# DEEPSEEK_API_KEY=your-deepseek-key
+# DeepSeek (alternative)
+# DEEPSEEK_API_KEY=your-key
 # DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 # DEEPSEEK_MODEL=deepseek-chat
+
+# Optional
+# LLM_TEMPERATURE=0.2
+# LLM_MAX_RETRIES=3
 ```
 
 ## Quick Start
 
-### Using Individual Agents
+```bash
+# Run with demo data (human, OpenAI)
+python examples/run_pipeline.py \
+  --counts datademo/counts.csv \
+  --metadata datademo/metadata.csv \
+  --output results/
 
-```python
-from deseq2_agent import get_llm, DEAgent
+# Use DeepSeek
+python examples/run_pipeline.py \
+  --counts datademo/counts.csv \
+  --metadata datademo/metadata.csv \
+  --output results/ \
+  --provider deepseek
 
-# Initialize LLM
-llm = get_llm()  # Uses OPENAI_API_KEY from environment
-
-# Create agent
-de_agent = DEAgent(llm)
-
-# Run analysis
-result = de_agent.run(
-    comparison="Treatment vs Control",
-    biological_hypothesis="Treatment reduces inflammation",
-    cutoff="padj < 0.05 & |log2FC| > 1",
-    up_genes=[{"gene": "COL1A1", "log2FC": 2.5, "padj": 1e-10}],
-    down_genes=[{"gene": "IL6", "log2FC": -1.5, "padj": 1e-5}]
-)
-
-print(result.overall_assessment)
+# Interactive mode — confirm outlier removal before DE
+python examples/run_pipeline.py \
+  --counts datademo/counts.csv \
+  --metadata datademo/metadata.csv \
+  --output results/ \
+  --interactive
 ```
 
-### Using the Complete Pipeline
+Output: `results/report.html` plus all intermediate CSVs, JSONs, and PNGs.
 
-```python
-from deseq2_agent import DESeq2Pipeline, get_llm
+## Input Format
 
-llm = get_llm()
-pipeline = DESeq2Pipeline(llm)
+**`counts.csv`** — raw integer counts, genes as rows, samples as columns:
+```
+gene_id,ctrl_1,ctrl_2,ctrl_3,treat_1,treat_2,treat_3
+ENSG00000141510,120,134,118,89,92,95
+ENSG00000012048,45,52,48,210,198,205
+...
+```
+Gene IDs can be ENSEMBL, Entrez, or gene symbols — auto-detected and mapped.
 
-results = pipeline.run(
-    sample_metadata={"samples": [...], "design": "paired"},
-    comparison_groups={"treatment": "T12", "control": "T0"},
-    qc_metrics={"library_sizes": [...], "genes_detected": [...]},
-    up_genes=[...],
-    down_genes=[...],
-    gsea_up=[...],
-    gsea_down=[...],
-    study_context="Phase II efficacy study"
-)
-
-# Access structured outputs
-print(results.report.executive_summary)
-print(results.report.key_findings)
+**`metadata.csv`** — one row per sample:
+```
+sample,condition,batch
+ctrl_1,Control,A
+ctrl_2,Control,A
+treat_1,Treatment,A
+treat_2,Treatment,B
+...
 ```
 
-### Using DeepSeek
+Contrasts are auto-generated from the `condition` column (all non-reference levels vs. the reference). Custom contrasts can be passed via the Python API.
 
-```python
-from deseq2_agent import get_llm, DESeq2Pipeline
+## Pipeline Overview
 
-# Use DeepSeek instead of OpenAI
-llm = get_llm(provider="deepseek")
-pipeline = DESeq2Pipeline(llm)
 ```
+counts.csv + metadata.csv
+  │
+  ▼ [R] 01_data_prep.R       Gene ID detection, ENSEMBL mapping, low-count filtering
+  ▼ [R] 02_qc_analysis.R     PCA, heatmap, MDS, IQR-based outlier flagging
+  ▼ [LLM] QCReviewAgent      Outlier removal decision → QCDecision
+  ▼ [R] 03_de_analysis.R     DESeq2 + apeglm shrinkage, volcano/MA plots
+  ▼ [LLM] DEReviewAgent      DE interpretation → DEReviewOutput
+  ▼ [R] 04_enrichment.R      GSEA + ORA (GO/KEGG) via clusterProfiler
+  ▼ [LLM] PathwayReviewAgent Pathway themes → PathwayReviewOutput
+  ▼ [LLM] ReportNarrativeAgent Full narrative → ReportNarrative
+  ▼ [HTML] HTMLReportBuilder  Self-contained report.html (~1–5 MB)
+```
+
+Python writes a `config.json` before each R step; R reads it, writes outputs, exits 0 or non-zero. Python validates expected files after each step.
 
 ## Project Structure
 
 ```
 DESeq2Agent/
 ├── deseq2_agent/
-│   ├── __init__.py          # Package exports
-│   ├── config.py             # LLM configuration
-│   ├── models.py             # Pydantic output models
-│   ├── prompts.py            # Agent prompt templates
-│   ├── pipeline.py           # Pipeline orchestration
-│   └── agents/
-│       ├── base.py           # Base agent class
-│       ├── data_agent.py     # Experimental design
-│       ├── qc_agent.py       # Quality control
-│       ├── de_agent.py       # Differential expression
-│       ├── pathway_agent.py  # Pathway analysis
-│       └── report_agent.py   # Report generation
-└── examples/
-    ├── basic_usage.py        # Individual agent examples
-    └── full_pipeline.py      # Complete pipeline example
+│   ├── config.py              LLMConfig + get_llm() factory
+│   ├── runner.py              RScriptRunner — subprocess + config I/O
+│   ├── models.py              Pydantic v2 output models
+│   ├── prompts.py             ChatPromptTemplates (Simplified Chinese)
+│   ├── pipeline.py            DESeq2Pipeline 9-step orchestrator
+│   ├── agents/
+│   │   ├── base.py            Abstract BaseAgent (LCEL chain)
+│   │   ├── qc_agent.py        QCReviewAgent + ConsoleIO (interactive)
+│   │   ├── de_agent.py        DEReviewAgent
+│   │   ├── pathway_agent.py   PathwayReviewAgent
+│   │   └── report_agent.py    ReportNarrativeAgent
+│   └── report/
+│       ├── html_builder.py    HTMLReportBuilder (Jinja2 + base64 PNGs)
+│       └── templates/
+│           └── report.html.jinja2
+├── r_scripts/
+│   ├── 01_data_prep.R         Gene ID mapping, DDS construction
+│   ├── 02_qc_analysis.R       QC plots + IQR outlier detection
+│   ├── 03_de_analysis.R       DESeq2 + lfcShrink(apeglm)
+│   └── 04_enrichment.R        clusterProfiler GSEA + ORA
+├── datademo/
+│   ├── counts.csv             100-gene × 6-sample synthetic demo
+│   └── metadata.csv
+├── examples/
+│   └── run_pipeline.py        CLI entry point
+└── tests/
+    └── smoke_test.py
 ```
 
-## Agent Outputs
+## Python API
 
-Each agent produces a structured Pydantic model:
+```python
+from deseq2_agent import DESeq2Pipeline, get_llm
 
-### DataAgentOutput
-- `experimental_design_summary`: Experiment design overview
-- `comparison_validity`: Comparison logic assessment
-- `metadata_issues`: List of metadata problems found
-- `confounding_factors`: Potential confounders identified
-- `recommendations`: Suggestions for improvement
+llm = get_llm()  # reads from .env
+pipeline = DESeq2Pipeline(llm, mode="auto")  # or mode="interactive"
 
-### QCAgentOutput
-- `quality_summary`: Overall quality assessment
-- `outlier_samples`: List of outliers with reasons
-- `batch_effect_assessment`: Batch effect evaluation
-- `data_usability`: Whether data supports analysis
-- `qc_recommendations`: QC suggestions
+results = pipeline.run(
+    counts_file="datademo/counts.csv",
+    metadata_file="datademo/metadata.csv",
+    contrasts=None,   # auto-detect from metadata
+    species="human",  # or "mouse"
+    output_dir="results/"
+)
 
-### DEAgentOutput
-- `overall_assessment`: Hypothesis support evaluation
-- `supporting_evidence`: Evidence supporting hypothesis
-- `potential_concerns`: Concerns or deviations
-- `interpretation_boundary`: Interpretation limits
+print(results.report_path)           # path to report.html
+print(results.qc_decision.samples_to_remove)
+print(results.de_review.contrasts[0].overall_assessment)
+print(results.narrative.executive_summary)
+```
 
-### PathwayAgentOutput
-- `mechanistic_summary`: Core biological mechanisms
-- `biological_context`: Context interpretation
-- `key_pathways_up/down`: Key regulated pathways
-- `missing_or_unexpected_signals`: Unexpected findings
+## CLI Options
 
-### ReportAgentOutput
-- `executive_summary`: 1-2 paragraph summary
-- `key_findings`: Prioritized findings list
-- `results_narrative`: Report-ready text
-- `limitations`: Analysis limitations
-- `conclusions`: Final conclusions
+```
+python examples/run_pipeline.py --help
 
-## Requirements
+  --counts      Path to raw counts CSV (required)
+  --metadata    Path to metadata CSV (required)
+  --output      Output directory (default: results/)
+  --species     human or mouse (default: human)
+  --provider    openai or deepseek (default: openai)
+  --interactive Prompt user to confirm outlier removal
+  --padj        Adjusted p-value threshold (default: 0.05)
+  --lfc         Log2 fold-change threshold (default: 1.0)
+```
 
-- Python >= 3.9
-- langchain >= 0.3.0
-- langchain-openai >= 0.2.0
-- pydantic >= 2.0
-- python-dotenv >= 1.0
+## Output Files
+
+```
+results/
+├── report.html                       Self-contained HTML report
+├── dds.rds                           DESeq2 object
+├── counts_ensembl.csv                ENSEMBL-mapped, filtered counts
+├── id_mapping.csv                    Gene ID cross-reference table
+├── data_prep_summary.json
+├── qc_metrics.json                   QC metrics + outlier flags
+├── qc_plots/                         PCA, heatmap, MDS, dispersion, ...
+├── de_summary.json
+├── {contrast}_results.csv            Full DE results
+├── {contrast}_sig_up.csv
+├── {contrast}_sig_down.csv
+├── de_plots/                         Volcano + MA plots per contrast
+├── enrichment_results_{contrast}.json
+└── enrichment/plots/                 GSEA/ORA dotplots
+```
 
 ## License
 
 MIT License
-
-## Related Projects
-
-- [AutoBioInfoPipe](../AutoBioInfoPipe) - Original implementation without LangChain
