@@ -50,11 +50,10 @@ n_genes_raw <- nrow(counts_raw)
 detect_gene_id_type <- function(ids) {
   ids_clean <- sub("\\.\\d+$", "", ids)  # strip version suffixes
   n <- length(ids_clean)
-  pct_ensg   <- sum(grepl("^ENSG", ids_clean)) / n
-  pct_ensmus <- sum(grepl("^ENSMUSG", ids_clean)) / n
+  pct_ens    <- sum(grepl("^ENS", ids_clean)) / n   # covers all species (ENSG/ENSMUSG/ENSRNOG/ENSCAFG/...)
   pct_entrez <- sum(grepl("^\\d+$", ids_clean)) / n
-  if (pct_ensg + pct_ensmus > 0.5) return("ENSEMBL")
-  if (pct_entrez > 0.5)            return("ENTREZID")
+  if (pct_ens > 0.5)     return("ENSEMBL")
+  if (pct_entrez > 0.5)  return("ENTREZID")
   return("SYMBOL")
 }
 
@@ -70,8 +69,15 @@ if (species %in% c("human", "hs", "homo_sapiens")) {
 } else if (species %in% c("mouse", "mm", "mus_musculus")) {
   suppressPackageStartupMessages(library(org.Mm.eg.db))
   orgdb <- org.Mm.eg.db
+} else if (species %in% c("rat", "rn", "rattus_norvegicus")) {
+  suppressPackageStartupMessages(library(org.Rn.eg.db))
+  orgdb <- org.Rn.eg.db
+} else if (species %in% c("dog", "cfa", "beagle", "canis_familiaris", "canis_lupus_familiaris")) {
+  suppressPackageStartupMessages(library(org.Cf.eg.db))
+  orgdb <- org.Cf.eg.db
 } else {
-  stop("Unsupported species: ", species, ". Use 'human' or 'mouse'.")
+  stop("Unsupported species: ", species,
+       ". Supported: 'human', 'mouse', 'rat', 'dog'.")
 }
 
 # --- Build ID mapping ---

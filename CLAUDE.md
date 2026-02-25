@@ -117,7 +117,10 @@ class QCReviewAgent(BaseAgent):
 
 ```r
 BiocManager::install(c("DESeq2", "DEGreport", "clusterProfiler",
-                        "org.Hs.eg.db", "org.Mm.eg.db", "AnnotationDbi", "enrichplot"))
+                        "org.Hs.eg.db", "org.Mm.eg.db",
+                        "org.Rn.eg.db",   # rat
+                        "org.Cf.eg.db",   # dog (beagle)
+                        "AnnotationDbi", "enrichplot"))
 install.packages(c("jsonlite", "ggplot2", "pheatmap", "ggrepel",
                    "RColorBrewer", "dplyr", "tibble"))
 ```

@@ -131,7 +131,7 @@ class DESeq2Pipeline:
             counts_file: Path to counts CSV (rows=genes, cols=samples, first col=gene IDs)
             metadata_file: Path to metadata CSV (rows=samples, cols=covariates)
             contrasts: List of contrast dicts with keys: name, variable, treatment, control
-            species: "human" or "mouse"
+            species: "human", "mouse", "rat", or "dog"
             output_dir: Directory to write all outputs
 
         Returns:
