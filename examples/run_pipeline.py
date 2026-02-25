@@ -123,15 +123,12 @@ def main():
         with open(cfg_path) as f:
             user_cfg = json.load(f)
 
-    # Require contrasts
-    contrasts = user_cfg.get("contrasts")
+    # Contrasts are optional — DesignDetectionAgent will auto-generate if absent
+    contrasts = user_cfg.get("contrasts") or None
     if not contrasts:
-        logger.error(
-            "No contrasts defined. Provide --config <file.json> containing a 'contrasts' list.\n"
-            '  Example: {"contrasts": [{"name": "TreatvsCtrl", "variable": "group",'
-            ' "treatment": "treat", "control": "ctrl"}]}'
+        logger.info(
+            "No contrasts in config — DesignDetectionAgent will auto-detect from metadata"
         )
-        sys.exit(1)
 
     # Resolve analysis params: CLI > config > default
     species = args.species or user_cfg.get("species", "human")
@@ -152,7 +149,10 @@ def main():
     logger.info(f"Counts: {counts_path}")
     logger.info(f"Metadata: {metadata_path}")
     logger.info(f"Output: {args.output}")
-    logger.info(f"Contrasts: {[c['name'] for c in contrasts]}")
+    if contrasts:
+        logger.info(f"Contrasts: {[c['name'] for c in contrasts]}")
+    else:
+        logger.info("Contrasts: auto-detect (DesignDetectionAgent)")
     logger.info(f"padj={padj}, lfc={lfc}")
 
     pipeline = DESeq2Pipeline(llm=llm, mode=mode)

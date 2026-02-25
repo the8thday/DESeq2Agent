@@ -5,6 +5,58 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
+# Design Detection Models
+# ---------------------------------------------------------------------------
+
+class ContrastSuggestion(BaseModel):
+    name: str = Field(description="Contrast name, e.g. 'TreatmentvsControl' or 'DrugvsControl_Day3'")
+    variable: str = Field(description="Metadata column used to define the comparison groups")
+    treatment: str = Field(description="Treatment group value (exact match to metadata)")
+    control: str = Field(description="Control group value (exact match to metadata)")
+    subset_column: Optional[str] = Field(
+        default=None,
+        description="Metadata column to subset samples on (e.g. 'time'); null for single_run strategy"
+    )
+    subset_value: Optional[str] = Field(
+        default=None,
+        description="Value in subset_column to filter for this contrast (e.g. 'Day3'); null for single_run"
+    )
+
+
+class DesignDecision(BaseModel):
+    design_type: str = Field(
+        description=(
+            "Detected experimental design type: "
+            "'simple_two_group' | 'longitudinal' | 'paired' | 'factorial' | 'multi_group'"
+        )
+    )
+    design_formula: str = Field(
+        description="Recommended DESeq2 design formula, e.g. '~ group' or '~ subject + group'"
+    )
+    analysis_strategy: str = Field(
+        description=(
+            "Recommended analysis strategy: "
+            "'single_run' (all samples together) | "
+            "'per_timepoint' (split by time, one DESeq2 run per time point) | "
+            "'per_condition' (split by some other condition)"
+        )
+    )
+    suggested_contrasts: List[ContrastSuggestion] = Field(
+        description="Automatically generated contrast list based on metadata structure"
+    )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Design-level warnings (low sample size, batch effects, imbalance, etc.)"
+    )
+    requires_confirmation: bool = Field(
+        description="True if design is non-trivial and user confirmation is recommended"
+    )
+    reasoning: str = Field(
+        description="Brief reasoning for the chosen design type and analysis strategy"
+    )
+
+
+# ---------------------------------------------------------------------------
 # QC Models
 # ---------------------------------------------------------------------------
 

@@ -85,7 +85,19 @@ for (ct in contrasts_cfg) {
 
   message(sprintf("[03_de] Processing contrast: %s (%s vs %s)", ct_name, ct_treat, ct_ctrl))
 
-  rel_samples <- rownames(metadata)[metadata[[ct_variable]] %in% c(ct_treat, ct_ctrl)]
+  subset_col <- ct$subset_column %||% NULL
+  subset_val <- ct$subset_value  %||% NULL
+
+  if (!is.null(subset_col) && !is.null(subset_val) && subset_col %in% colnames(metadata)) {
+    message(sprintf("[03_de]   Subsetting: %s == %s", subset_col, subset_val))
+    rel_samples <- rownames(metadata)[
+      metadata[[ct_variable]] %in% c(ct_treat, ct_ctrl) &
+      metadata[[subset_col]]  == subset_val
+    ]
+  } else {
+    rel_samples <- rownames(metadata)[metadata[[ct_variable]] %in% c(ct_treat, ct_ctrl)]
+  }
+
   if (length(rel_samples) < 4) {
     warning(sprintf("Contrast %s: fewer than 4 samples, skipping", ct_name))
     next

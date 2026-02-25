@@ -9,15 +9,19 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
+import pandas as pd
 from langchain_core.language_models import BaseChatModel
 
+from deseq2_agent.agents.design_agent import DesignDetectionAgent
 from deseq2_agent.agents.qc_agent import ConsoleIO, QCReviewAgent
 from deseq2_agent.agents.de_agent import DEReviewAgent
 from deseq2_agent.agents.pathway_agent import PathwayReviewAgent
 from deseq2_agent.agents.report_agent import ReportNarrativeAgent
-from deseq2_agent.models import QCDecision, DEReviewOutput, PathwayReviewOutput, ReportNarrative
+from deseq2_agent.models import (
+    DesignDecision, QCDecision, DEReviewOutput, PathwayReviewOutput, ReportNarrative
+)
 from deseq2_agent.report.html_builder import HTMLReportBuilder
 from deseq2_agent.runner import RScriptRunner, RScriptError
 
@@ -31,14 +35,21 @@ class ContrastConfig:
     variable: str
     treatment: str
     control: str
+    subset_column: Optional[str] = None   # e.g. "time"
+    subset_value: Optional[str] = None    # e.g. "Day3"
 
     def to_dict(self) -> dict:
-        return {
+        d = {
             "name": self.name,
             "variable": self.variable,
             "treatment": self.treatment,
             "control": self.control,
         }
+        if self.subset_column:
+            d["subset_column"] = self.subset_column
+        if self.subset_value:
+            d["subset_value"] = self.subset_value
+        return d
 
 
 @dataclass
@@ -74,6 +85,7 @@ class PipelineConfig:
 @dataclass
 class PipelineResults:
     """All outputs from a completed pipeline run."""
+    design_decision: Optional[DesignDecision] = None
     qc_decision: Optional[QCDecision] = None
     de_review: Optional[DEReviewOutput] = None
     pathway_review: Optional[PathwayReviewOutput] = None
@@ -83,6 +95,7 @@ class PipelineResults:
 
     def to_dict(self) -> dict:
         return {
+            "design_decision": self.design_decision.model_dump() if self.design_decision else None,
             "qc_decision": self.qc_decision.model_dump() if self.qc_decision else None,
             "de_review": self.de_review.model_dump() if self.de_review else None,
             "pathway_review": self.pathway_review.model_dump() if self.pathway_review else None,
@@ -111,17 +124,36 @@ class DESeq2Pipeline:
         self.llm = llm
         self.mode = mode
 
+        self.design_agent = DesignDetectionAgent(llm)
         self.qc_agent = QCReviewAgent(llm)
         self.de_agent = DEReviewAgent(llm)
         self.pathway_agent = PathwayReviewAgent(llm)
         self.report_agent = ReportNarrativeAgent(llm)
         self.html_builder = HTMLReportBuilder()
 
+    @staticmethod
+    def _build_metadata_summary(metadata_file: str) -> str:
+        """Build a structured JSON summary of metadata for DesignDetectionAgent."""
+        df = pd.read_csv(metadata_file)
+        summary: Dict = {"n_samples": len(df), "columns": {}}
+        for col in df.columns:
+            vals = df[col].dropna()
+            unique_vals = sorted(vals.unique().tolist(), key=str)
+            n_u = len(unique_vals)
+            info: Dict = {"n_unique": n_u, "dtype": str(df[col].dtype)}
+            if n_u <= 20:
+                info["unique_values"] = [str(v) for v in unique_vals]
+                info["value_counts"] = {
+                    str(k): int(v) for k, v in df[col].value_counts().items()
+                }
+            summary["columns"][col] = info
+        return json.dumps(summary, indent=2, ensure_ascii=False)
+
     def run(
         self,
         counts_file: str,
         metadata_file: str,
-        contrasts: List[dict],
+        contrasts: Optional[List[dict]] = None,
         species: str = "human",
         output_dir: str = "./results/",
     ) -> PipelineResults:
@@ -131,6 +163,8 @@ class DESeq2Pipeline:
             counts_file: Path to counts CSV (rows=genes, cols=samples, first col=gene IDs)
             metadata_file: Path to metadata CSV (rows=samples, cols=covariates)
             contrasts: List of contrast dicts with keys: name, variable, treatment, control
+                       (and optional subset_column, subset_value).
+                       If None or empty, DesignDetectionAgent auto-generates contrasts.
             species: "human", "mouse", "rat", or "dog"
             output_dir: Directory to write all outputs
 
@@ -140,6 +174,55 @@ class DESeq2Pipeline:
         # --- Setup ---
         output_dir = str(Path(output_dir).resolve())
         os.makedirs(output_dir, exist_ok=True)
+
+        results = PipelineResults(output_dir=output_dir)
+
+        # =========================================================
+        # Step 0: Design Detection (LLM)
+        # =========================================================
+        logger.info("=== Step 0: Design Detection (LLM) ===")
+        metadata_summary = self._build_metadata_summary(metadata_file)
+        design_decision = self.design_agent.invoke({"metadata_summary": metadata_summary})
+        results.design_decision = design_decision
+
+        logger.info(
+            f"Design detected: type={design_decision.design_type}, "
+            f"strategy={design_decision.analysis_strategy}, "
+            f"formula={design_decision.design_formula}"
+        )
+        for w in design_decision.warnings:
+            logger.warning(f"[Design] {w}")
+
+        # Resolve contrasts: user-provided > agent-suggested
+        if contrasts:
+            logger.info(f"Using {len(contrasts)} user-provided contrast(s)")
+        else:
+            logger.info(
+                f"No contrasts provided — using {len(design_decision.suggested_contrasts)} "
+                f"auto-suggested contrast(s) from DesignDetectionAgent"
+            )
+            contrasts = [c.model_dump() for c in design_decision.suggested_contrasts]
+
+        if design_decision.requires_confirmation and self.mode == "interactive":
+            print("\n[Design Detection] 检测到的实验设计：")
+            print(f"  类型: {design_decision.design_type}")
+            print(f"  分析策略: {design_decision.analysis_strategy}")
+            print(f"  Design formula: {design_decision.design_formula}")
+            print(f"  推荐 contrasts ({len(contrasts)}):")
+            for c in contrasts:
+                subset_info = (
+                    f" [subset: {c.get('subset_column')}={c.get('subset_value')}]"
+                    if c.get("subset_column") else ""
+                )
+                print(f"    - {c['name']}: {c['treatment']} vs {c['control']}{subset_info}")
+            if design_decision.warnings:
+                print("  警告:")
+                for w in design_decision.warnings:
+                    print(f"    ⚠ {w}")
+            ans = input("\n继续使用上述设计？(y/n，回车=yes): ").strip().lower()
+            if ans == "n":
+                logger.info("用户取消了自动检测的设计，请在 config.json 中手动指定 contrasts")
+                raise RuntimeError("用户取消了自动检测的实验设计。请在 config.json 中手动指定 contrasts 后重新运行。")
 
         contrast_objs = [ContrastConfig(**c) for c in contrasts]
         config = PipelineConfig(
@@ -158,8 +241,6 @@ class DESeq2Pipeline:
                 "Rscript not found on PATH. Please install R (>=4.2) and ensure "
                 "'Rscript' is accessible."
             )
-
-        results = PipelineResults(output_dir=output_dir)
 
         # =========================================================
         # Step 1: Data Preparation
@@ -197,7 +278,6 @@ class DESeq2Pipeline:
         # =========================================================
         logger.info("=== Step 3: QC Review (LLM) ===")
 
-        import pandas as pd
         metadata_df = pd.read_csv(metadata_file, index_col=0)
         metadata_summary = metadata_df.to_string()
 

@@ -36,6 +36,8 @@ theme_pub <- function(base_size = 12) {
 
 `%||%` <- function(a, b) if (!is.null(a) && !identical(a, NA)) a else b
 
+set.seed(42)
+
 args <- commandArgs(trailingOnly = TRUE)
 config <- fromJSON(args[1], simplifyDataFrame = FALSE)
 
@@ -277,6 +279,32 @@ for (ct in contrasts_cfg) {
       save_plot_safe(p, file.path(ct_plot_dir, "ora_kegg_dotplot.png"), w = 10, h = 7)
     }, error = function(e) message("ORA KEGG dotplot failed: ", e$message))
   }
+
+  # ── Save full result tables as CSV ──────────────────────────────────────────
+  ct_csv_dir <- file.path(output_dir, "enrichment", "tables", ct_name)
+  dir.create(ct_csv_dir, showWarnings = FALSE, recursive = TRUE)
+
+  save_csv_safe <- function(enrich_obj, path) {
+    tryCatch({
+      df <- as.data.frame(enrich_obj)
+      if (!is.null(df) && nrow(df) > 0) {
+        write.csv(df[order(df$p.adjust), ], path, row.names = FALSE)
+        message("[04_enrichment] Saved: ", basename(path),
+                " (", nrow(df), " rows)")
+      }
+    }, error = function(e) {
+      message("CSV save failed for ", path, ": ", e$message)
+    })
+  }
+
+  if (!is.null(gsea_go))   save_csv_safe(gsea_go,
+    file.path(ct_csv_dir, "gsea_go.csv"))
+  if (!is.null(gsea_kegg)) save_csv_safe(gsea_kegg,
+    file.path(ct_csv_dir, "gsea_kegg.csv"))
+  if (!is.null(ora_go))    save_csv_safe(ora_go,
+    file.path(ct_csv_dir, "ora_go.csv"))
+  if (!is.null(ora_kegg))  save_csv_safe(ora_kegg,
+    file.path(ct_csv_dir, "ora_kegg.csv"))
 
   # ── Write JSON ────────────────────────────────────────────────────────────────
   enrich_result <- list(
