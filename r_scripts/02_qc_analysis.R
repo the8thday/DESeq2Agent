@@ -57,8 +57,15 @@ dds      <- readRDS(dds_path)
 metadata <- read.csv(metadata_file, row.names = 1, stringsAsFactors = FALSE)
 metadata <- metadata[colnames(dds), , drop = FALSE]
 
-first_col <- colnames(metadata)[1]
-metadata[[first_col]] <- as.character(metadata[[first_col]])  # ensure discrete scale
+# Auto-detect informative grouping columns
+n_samp <- ncol(dds)
+color_cols <- Filter(function(col) {
+  n_uniq <- length(unique(metadata[[col]]))
+  n_uniq >= 2 && n_uniq <= 10 && n_uniq < n_samp
+}, colnames(metadata))
+if (length(color_cols) == 0) color_cols <- colnames(metadata)[1]  # fallback
+for (col in color_cols) metadata[[col]] <- as.character(metadata[[col]])
+primary_col <- color_cols[1]   # used for heatmap, library sizes, detected genes, hclust
 
 # ── VST normalization ────────────────────────────────────────────────────────────
 message("[02_qc] Computing VST...")
@@ -75,52 +82,53 @@ vsd_mat <- assay(vsd)
 lib_sizes      <- colSums(counts(dds))
 detected_genes <- colSums(counts(dds) > 0)
 
-# ── PCA (top 500 variable genes) ─────────────────────────────────────────────────
+# ── PCA (top 2000 variable genes) ────────────────────────────────────────────────
 message("[02_qc] Computing PCA...")
 rv      <- rowVars(vsd_mat)
-top_idx <- order(rv, decreasing = TRUE)[seq_len(min(500, length(rv)))]
+top_idx <- order(rv, decreasing = TRUE)[seq_len(min(2000, length(rv)))]
 pca_res <- prcomp(t(vsd_mat[top_idx, ]), scale. = FALSE)
 pct_var <- round(summary(pca_res)$importance[2, ] * 100, 1)
 
 pca_df <- as.data.frame(pca_res$x[, 1:min(4, ncol(pca_res$x))])
 pca_df$sample <- rownames(pca_df)
-pca_df[[first_col]] <- metadata[pca_df$sample, first_col]
 
-# Only draw ellipses when every group has >= 3 samples
-min_grp_size  <- min(table(pca_df[[first_col]]))
-draw_ellipse  <- min_grp_size >= 3
+for (col in color_cols) {
+  pca_df[[col]] <- metadata[pca_df$sample, col]
+  min_grp_size  <- min(table(pca_df[[col]]))
+  draw_ellipse  <- min_grp_size >= 3
 
-p_pca <- ggplot(pca_df, aes(x = PC1, y = PC2,
-                              color = .data[[first_col]],
-                              label = sample)) +
-  { if (draw_ellipse) stat_ellipse(aes(group = .data[[first_col]]),
-               level = 0.9, type = "t",
-               linetype = "dashed", linewidth = 0.6, show.legend = FALSE) } +
-  geom_point(size = 4, alpha = 0.88) +
-  geom_text_repel(size = 3.2, max.overlaps = 20, show.legend = FALSE,
-                  min.segment.length = 0, segment.size = 0.3,
-                  segment.alpha = 0.6, box.padding = 0.45, point.padding = 0.3) +
-  scale_color_manual(values = GROUP_COLORS, name = first_col) +
-  labs(
-    title    = "PCA — Top 500 Variable Genes",
-    subtitle = sprintf("PC1 explains %s%% | PC2 explains %s%% of variance",
-                       pct_var[1], pct_var[2]),
-    x = paste0("PC1  (", pct_var[1], "%)"),
-    y = paste0("PC2  (", pct_var[2], "%)")
-  ) +
-  theme_pub()
+  p_pca <- ggplot(pca_df, aes(x = PC1, y = PC2,
+                                color = .data[[col]],
+                                label = sample)) +
+    { if (draw_ellipse) stat_ellipse(aes(group = .data[[col]]),
+                 level = 0.9, type = "t",
+                 linetype = "dashed", linewidth = 0.6, show.legend = FALSE) } +
+    geom_point(size = 4, alpha = 0.88) +
+    geom_text_repel(size = 3.2, max.overlaps = 20, show.legend = FALSE,
+                    min.segment.length = 0, segment.size = 0.3,
+                    segment.alpha = 0.6, box.padding = 0.45, point.padding = 0.3) +
+    scale_color_manual(values = GROUP_COLORS, name = col) +
+    labs(
+      title    = "PCA — Top 2000 Variable Genes",
+      subtitle = sprintf("PC1 explains %s%% | PC2 explains %s%% of variance",
+                         pct_var[1], pct_var[2]),
+      x = paste0("PC1  (", pct_var[1], "%)"),
+      y = paste0("PC2  (", pct_var[2], "%)")
+    ) +
+    theme_pub()
 
-ggsave(file.path(qc_plots_dir, "pca.png"), p_pca, width = 7, height = 5.5, dpi = 200)
+  ggsave(file.path(qc_plots_dir, paste0("pca_", col, ".png")), p_pca,
+         width = 7, height = 5.5, dpi = 200)
+}
 
 # ── Sample correlation heatmap ───────────────────────────────────────────────────
 message("[02_qc] Computing correlation heatmap...")
 cor_mat  <- cor(vsd_mat, method = "pearson")
-annot_df <- metadata[, 1, drop = FALSE]
-colnames(annot_df) <- first_col
+annot_df <- metadata[, primary_col, drop = FALSE]
 
-n_grp     <- length(unique(annot_df[[first_col]]))
-grp_cols  <- setNames(GROUP_COLORS[seq_len(n_grp)], sort(unique(annot_df[[first_col]])))
-annot_colors <- setNames(list(grp_cols), first_col)
+n_grp     <- length(unique(annot_df[[primary_col]]))
+grp_cols  <- setNames(GROUP_COLORS[seq_len(n_grp)], sort(unique(annot_df[[primary_col]])))
+annot_colors <- setNames(list(grp_cols), primary_col)
 
 cor_min <- max(0.5, floor(min(cor_mat) * 100) / 100 - 0.01)
 tryCatch({
@@ -148,34 +156,40 @@ dist_mat <- dist(t(vsd_mat))
 mds_res  <- cmdscale(dist_mat, k = 2)
 mds_df   <- data.frame(MDS1 = mds_res[, 1], MDS2 = mds_res[, 2],
                         sample = rownames(mds_res))
-mds_df[[first_col]] <- metadata[mds_df$sample, first_col]
 
-p_mds <- ggplot(mds_df, aes(x = MDS1, y = MDS2,
-                              color = .data[[first_col]],
-                              label = sample)) +
-  { if (draw_ellipse) stat_ellipse(aes(group = .data[[first_col]]),
-               level = 0.9, type = "t",
-               linetype = "dashed", linewidth = 0.6, show.legend = FALSE) } +
-  geom_point(size = 4, alpha = 0.88) +
-  geom_text_repel(size = 3.2, max.overlaps = 20, show.legend = FALSE,
-                  min.segment.length = 0, segment.size = 0.3,
-                  segment.alpha = 0.6, box.padding = 0.45, point.padding = 0.3) +
-  scale_color_manual(values = GROUP_COLORS, name = first_col) +
-  labs(
-    title    = "Multidimensional Scaling (MDS)",
-    subtitle = "Based on VST-normalized Euclidean distances",
-    x = "MDS Dimension 1", y = "MDS Dimension 2"
-  ) +
-  theme_pub()
+for (col in color_cols) {
+  mds_df[[col]] <- metadata[mds_df$sample, col]
+  min_grp_size  <- min(table(mds_df[[col]]))
+  draw_ellipse  <- min_grp_size >= 3
 
-ggsave(file.path(qc_plots_dir, "mds.png"), p_mds, width = 7, height = 5.5, dpi = 200)
+  p_mds <- ggplot(mds_df, aes(x = MDS1, y = MDS2,
+                                color = .data[[col]],
+                                label = sample)) +
+    { if (draw_ellipse) stat_ellipse(aes(group = .data[[col]]),
+                 level = 0.9, type = "t",
+                 linetype = "dashed", linewidth = 0.6, show.legend = FALSE) } +
+    geom_point(size = 4, alpha = 0.88) +
+    geom_text_repel(size = 3.2, max.overlaps = 20, show.legend = FALSE,
+                    min.segment.length = 0, segment.size = 0.3,
+                    segment.alpha = 0.6, box.padding = 0.45, point.padding = 0.3) +
+    scale_color_manual(values = GROUP_COLORS, name = col) +
+    labs(
+      title    = "Multidimensional Scaling (MDS)",
+      subtitle = "Based on VST-normalized Euclidean distances",
+      x = "MDS Dimension 1", y = "MDS Dimension 2"
+    ) +
+    theme_pub()
+
+  ggsave(file.path(qc_plots_dir, paste0("mds_", col, ".png")), p_mds,
+         width = 7, height = 5.5, dpi = 200)
+}
 
 # ── Hierarchical clustering ──────────────────────────────────────────────────────
 message("[02_qc] Computing hierarchical clustering...")
 hc        <- hclust(dist_mat, method = "complete")
 dend_data <- dendro_data(hc, type = "rectangle")
 label_df  <- label(dend_data)
-label_df[[first_col]] <- metadata[as.character(label_df$label), first_col]
+label_df[[primary_col]] <- metadata[as.character(label_df$label), primary_col]
 
 p_hclust <- ggplot() +
   geom_segment(data = segment(dend_data),
@@ -183,12 +197,12 @@ p_hclust <- ggplot() +
                color = "grey35", linewidth = 0.55) +
   geom_text(data = label_df,
             aes(x = x, y = 0, label = label,
-                color = .data[[first_col]]),
+                color = .data[[primary_col]]),
             hjust = 1, angle = 90, size = 3.0, show.legend = TRUE) +
   scale_color_manual(
     values = setNames(GROUP_COLORS[seq_len(n_grp)],
-                      sort(unique(label_df[[first_col]]))),
-    name = first_col
+                      sort(unique(label_df[[primary_col]]))),
+    name = primary_col
   ) +
   scale_y_continuous(expand = expansion(mult = c(0.35, 0.05))) +
   labs(
@@ -261,16 +275,16 @@ if (!is.null(dds_for_disp)) {
 
 # ── Library sizes ────────────────────────────────────────────────────────────────
 lib_df <- data.frame(sample = names(lib_sizes), library_size = lib_sizes / 1e6)
-lib_df[[first_col]] <- metadata[lib_df$sample, first_col]
+lib_df[[primary_col]] <- metadata[lib_df$sample, primary_col]
 lib_df$sample <- factor(lib_df$sample, levels = lib_df$sample[order(lib_df$library_size)])
 
 p_lib <- ggplot(lib_df, aes(x = sample, y = library_size,
-                              fill = .data[[first_col]])) +
+                              fill = .data[[primary_col]])) +
   geom_col(width = 0.7, color = "white", linewidth = 0.3) +
   geom_text(aes(label = sprintf("%.1f M", library_size)),
             hjust = -0.1, size = 3.2, color = "grey25") +
   coord_flip(clip = "off") +
-  scale_fill_manual(values = GROUP_COLORS, name = first_col) +
+  scale_fill_manual(values = GROUP_COLORS, name = primary_col) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.20))) +
   labs(
     title    = "Library Sizes",
@@ -285,16 +299,16 @@ ggsave(file.path(qc_plots_dir, "library_sizes.png"), p_lib,
 
 # ── Detected genes ───────────────────────────────────────────────────────────────
 det_df <- data.frame(sample = names(detected_genes), n_genes = detected_genes)
-det_df[[first_col]] <- metadata[det_df$sample, first_col]
+det_df[[primary_col]] <- metadata[det_df$sample, primary_col]
 det_df$sample <- factor(det_df$sample, levels = det_df$sample[order(det_df$n_genes)])
 
 p_det <- ggplot(det_df, aes(x = sample, y = n_genes,
-                              fill = .data[[first_col]])) +
+                              fill = .data[[primary_col]])) +
   geom_col(width = 0.7, color = "white", linewidth = 0.3) +
   geom_text(aes(label = format(n_genes, big.mark = ",")),
             hjust = -0.1, size = 3.2, color = "grey25") +
   coord_flip(clip = "off") +
-  scale_fill_manual(values = GROUP_COLORS, name = first_col) +
+  scale_fill_manual(values = GROUP_COLORS, name = primary_col) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.20))) +
   labs(
     title    = "Detected Genes per Sample",
@@ -351,14 +365,22 @@ qc_metrics <- list(
   }),
   outlier_flags           = outlier_flags,
   outlier_samples_flagged = outlier_samples_flagged,
-  plots                   = list(
-    pca            = file.path(qc_plots_dir, "pca.png"),
-    heatmap        = file.path(qc_plots_dir, "heatmap.png"),
-    mds            = file.path(qc_plots_dir, "mds.png"),
-    hclust         = file.path(qc_plots_dir, "hclust.png"),
-    dispersion     = file.path(qc_plots_dir, "dispersion.png"),
-    library_sizes  = file.path(qc_plots_dir, "library_sizes.png"),
-    detected_genes = file.path(qc_plots_dir, "detected_genes.png")
+  plots = c(
+    setNames(
+      lapply(color_cols, function(col) file.path(qc_plots_dir, paste0("pca_", col, ".png"))),
+      paste0("pca_", color_cols)
+    ),
+    setNames(
+      lapply(color_cols, function(col) file.path(qc_plots_dir, paste0("mds_", col, ".png"))),
+      paste0("mds_", color_cols)
+    ),
+    list(
+      heatmap        = file.path(qc_plots_dir, "heatmap.png"),
+      hclust         = file.path(qc_plots_dir, "hclust.png"),
+      dispersion     = file.path(qc_plots_dir, "dispersion.png"),
+      library_sizes  = file.path(qc_plots_dir, "library_sizes.png"),
+      detected_genes = file.path(qc_plots_dir, "detected_genes.png")
+    )
   )
 )
 

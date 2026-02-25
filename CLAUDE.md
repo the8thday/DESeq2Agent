@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-DESeq2Agent is an end-to-end RNA-seq differential expression analysis pipeline. It runs DESeq2, QC, and enrichment analysis via R subprocesses, with LLM agents interpreting results at key stages and producing a self-contained HTML report.
+DESeq2Agent is an end-to-end RNA-seq differential expression analysis pipeline (v2.0.0). It runs DESeq2, QC, and enrichment analysis via R subprocesses, with LLM agents interpreting results at key stages and producing a self-contained HTML report.
 
 Input: raw counts CSV + metadata CSV + contrast config
 Output: `results/report.html` + all intermediate CSVs, JSONs, and PNGs
@@ -15,15 +15,27 @@ Output: `results/report.html` + all intermediate CSVs, JSONs, and PNGs
 # Development install (editable)
 pip install -e ".[dev]"
 
-# Run the pipeline with demo data
+# Run the pipeline with demo data (--config is required)
 python examples/run_pipeline.py \
   --counts datademo/counts.csv \
   --metadata datademo/metadata.csv \
+  --config datademo/config.json \
   --output results/ \
-  --provider deepseek   # or openai
+  --provider deepseek
+
+# Full example with all optional overrides
+python examples/run_pipeline.py \
+  --counts path/to/counts.csv \
+  --metadata path/to/metadata.csv \
+  --config path/to/config.json \
+  --output ./results/ \
+  --species human \       # human | mouse | rat | dog (overrides config)
+  --provider deepseek \   # openai | deepseek
+  --padj 0.05 \           # adjusted p-value threshold (overrides config default: 0.05)
+  --lfc 1.0               # log2 fold-change threshold (overrides config default: 1.0)
 
 # Interactive mode (LLM proposes outlier removal, user confirms)
-python examples/run_pipeline.py --counts ... --interactive
+python examples/run_pipeline.py --config datademo/config.json --interactive
 
 # Run tests
 pytest tests/
@@ -57,7 +69,9 @@ counts.csv + metadata.csv + contrasts
   │   filter low counts, write dds.rds + id_mapping.csv + counts_ensembl.csv
   │
   ▼ [R] 02_qc_analysis.R
-  │   PCA, correlation heatmap, MDS, dispersion, library sizes;
+  │   Auto-detect informative metadata columns (2 ≤ n_unique ≤ 10 AND n_unique < n_samples)
+  │   PCA (top 2000 variable genes) + MDS — one plot per qualifying column → pca_{col}.png / mds_{col}.png
+  │   Correlation heatmap, hierarchical clustering (hclust.png), dispersion, library sizes
   │   IQR-based outlier flagging → qc_metrics.json + qc_plots/*.png
   │
   ▼ [LLM] QCReviewAgent
@@ -99,6 +113,20 @@ Before each R step: Python writes `{output_dir}/config.json` (atomic write via t
 - `deseq2_agent/pipeline.py`: `DESeq2Pipeline.run()` — 9-step orchestrator; `PipelineConfig`, `PipelineResults`
 - `deseq2_agent/report/html_builder.py`: `HTMLReportBuilder.build()` — Jinja2 templating + base64 PNG embedding
 - `deseq2_agent/report/templates/report.html.jinja2`: Self-contained HTML template
+
+### QC Plots Naming Convention
+
+`02_qc_analysis.R` auto-detects informative grouping columns from metadata using the heuristic:
+`2 ≤ n_unique ≤ 10 AND n_unique < n_samples` — skips per-sample IDs and constant columns.
+
+- PCA/MDS plots: `qc_plots/pca_{col}.png`, `qc_plots/mds_{col}.png` (one per qualifying column)
+- Fixed plots: `qc_plots/heatmap.png`, `qc_plots/hclust.png`, `qc_plots/dispersion.png`, `qc_plots/library_sizes.png`, `qc_plots/detected_genes.png`
+- `primary_col` = first qualifying column, used for heatmap/hclust/library_sizes/detected_genes coloring
+- Falls back to first metadata column if no column qualifies
+
+`qc_metrics.json → plots` dict is built dynamically with keys `pca_{col}` and `mds_{col}`.
+`html_builder.py._encode_plots()` encodes all keys dynamically — no hardcoded plot names.
+The Jinja2 template renders PCA/MDS sections by iterating keys with `pca_` / `mds_` prefix.
 
 ### BaseAgent Pattern
 
