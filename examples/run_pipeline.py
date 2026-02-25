@@ -2,15 +2,16 @@
 
 Usage:
     # Auto mode (LLM decides outlier removal):
-    python examples/run_pipeline.py
+    python examples/run_pipeline.py --config datademo/config.json
 
     # Interactive mode (user confirms each outlier):
-    python examples/run_pipeline.py --interactive
+    python examples/run_pipeline.py --config datademo/config.json --interactive
 
     # Custom inputs:
     python examples/run_pipeline.py \
         --counts path/to/counts.csv \
         --metadata path/to/metadata.csv \
+        --config path/to/config.json \
         --output ./my_results/
 
 Requirements:
@@ -20,6 +21,7 @@ Requirements:
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -63,9 +65,9 @@ def parse_args():
     )
     parser.add_argument(
         "--species",
-        default="human",
-        choices=["human", "mouse"],
-        help="Species for annotation",
+        default=None,
+        choices=["human", "mouse", "rat", "dog"],
+        help="Species for annotation (default: human, overridden by --config)",
     )
     parser.add_argument(
         "--interactive",
@@ -81,14 +83,19 @@ def parse_args():
     parser.add_argument(
         "--padj",
         type=float,
-        default=0.05,
+        default=None,
         help="Adjusted p-value threshold (default: 0.05)",
     )
     parser.add_argument(
         "--lfc",
         type=float,
-        default=1.0,
+        default=None,
         help="log2 fold change threshold (default: 1.0)",
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to analysis config JSON with 'contrasts' and optional parameter overrides",
     )
     return parser.parse_args()
 
@@ -106,6 +113,31 @@ def main():
         logger.error(f"Metadata file not found: {metadata_path}")
         sys.exit(1)
 
+    # Load user config
+    user_cfg = {}
+    if args.config:
+        cfg_path = Path(args.config)
+        if not cfg_path.exists():
+            logger.error(f"Config file not found: {cfg_path}")
+            sys.exit(1)
+        with open(cfg_path) as f:
+            user_cfg = json.load(f)
+
+    # Require contrasts
+    contrasts = user_cfg.get("contrasts")
+    if not contrasts:
+        logger.error(
+            "No contrasts defined. Provide --config <file.json> containing a 'contrasts' list.\n"
+            '  Example: {"contrasts": [{"name": "TreatvsCtrl", "variable": "group",'
+            ' "treatment": "treat", "control": "ctrl"}]}'
+        )
+        sys.exit(1)
+
+    # Resolve analysis params: CLI > config > default
+    species = args.species or user_cfg.get("species", "human")
+    padj = args.padj if args.padj is not None else user_cfg.get("padj_threshold", 0.05)
+    lfc = args.lfc if args.lfc is not None else user_cfg.get("lfc_threshold", 1.0)
+
     # Load LLM
     logger.info(f"Loading LLM (provider={args.provider})...")
     try:
@@ -115,24 +147,13 @@ def main():
         logger.error("Please set OPENAI_API_KEY (or DEEPSEEK_API_KEY) in your .env file")
         sys.exit(1)
 
-    # Define contrasts
-    # This matches the demo metadata.csv which has a 'condition' column
-    # with values 'Control' and 'Treatment'
-    contrasts = [
-        {
-            "name": "TreatmentvsControl",
-            "variable": "condition",
-            "treatment": "Treatment",
-            "control": "Control",
-        }
-    ]
-
     mode = "interactive" if args.interactive else "auto"
-    logger.info(f"Starting pipeline: mode={mode}, species={args.species}")
+    logger.info(f"Starting pipeline: mode={mode}, species={species}")
     logger.info(f"Counts: {counts_path}")
     logger.info(f"Metadata: {metadata_path}")
     logger.info(f"Output: {args.output}")
     logger.info(f"Contrasts: {[c['name'] for c in contrasts]}")
+    logger.info(f"padj={padj}, lfc={lfc}")
 
     pipeline = DESeq2Pipeline(llm=llm, mode=mode)
 
@@ -141,7 +162,7 @@ def main():
             counts_file=str(counts_path),
             metadata_file=str(metadata_path),
             contrasts=contrasts,
-            species=args.species,
+            species=species,
             output_dir=args.output,
         )
     except Exception as e:
