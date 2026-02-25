@@ -122,7 +122,7 @@ BiocManager::install(c("DESeq2", "DEGreport", "clusterProfiler",
                         "org.Cf.eg.db",   # dog (beagle)
                         "AnnotationDbi", "enrichplot"))
 install.packages(c("jsonlite", "ggplot2", "pheatmap", "ggrepel",
-                   "RColorBrewer", "dplyr", "tibble"))
+                   "RColorBrewer", "dplyr", "tibble", "ggsci", "ggdendro"))
 ```
 
 Requires: R ≥ 4.2, Bioconductor ≥ 3.16

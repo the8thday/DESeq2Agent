@@ -11,6 +11,8 @@ suppressPackageStartupMessages({
   library(pheatmap)
   library(RColorBrewer)
   library(dplyr)
+  library(ggsci)
+  library(ggdendro)
 })
 
 # ── Publication-quality theme ────────────────────────────────────────────────────
@@ -35,9 +37,8 @@ theme_pub <- function(base_size = 12) {
     )
 }
 
-# Publication-safe color palette (NPG-inspired, up to 8 groups)
-GROUP_COLORS <- c("#E64B35", "#4DBBD5", "#00A087", "#3C5488",
-                  "#F39B7F", "#8491B4", "#91D1C2", "#DC0000")
+# ggsci NPG palette (up to 10 groups)
+GROUP_COLORS <- pal_npg("nrc")(10)
 
 `%||%` <- function(a, b) if (!is.null(a) && !identical(a, NA)) a else b
 
@@ -57,6 +58,7 @@ metadata <- read.csv(metadata_file, row.names = 1, stringsAsFactors = FALSE)
 metadata <- metadata[colnames(dds), , drop = FALSE]
 
 first_col <- colnames(metadata)[1]
+metadata[[first_col]] <- as.character(metadata[[first_col]])  # ensure discrete scale
 
 # ── VST normalization ────────────────────────────────────────────────────────────
 message("[02_qc] Computing VST...")
@@ -84,12 +86,16 @@ pca_df <- as.data.frame(pca_res$x[, 1:min(4, ncol(pca_res$x))])
 pca_df$sample <- rownames(pca_df)
 pca_df[[first_col]] <- metadata[pca_df$sample, first_col]
 
+# Only draw ellipses when every group has >= 3 samples
+min_grp_size  <- min(table(pca_df[[first_col]]))
+draw_ellipse  <- min_grp_size >= 3
+
 p_pca <- ggplot(pca_df, aes(x = PC1, y = PC2,
                               color = .data[[first_col]],
                               label = sample)) +
-  stat_ellipse(aes(group = .data[[first_col]]),
+  { if (draw_ellipse) stat_ellipse(aes(group = .data[[first_col]]),
                level = 0.9, type = "t",
-               linetype = "dashed", linewidth = 0.6, show.legend = FALSE) +
+               linetype = "dashed", linewidth = 0.6, show.legend = FALSE) } +
   geom_point(size = 4, alpha = 0.88) +
   geom_text_repel(size = 3.2, max.overlaps = 20, show.legend = FALSE,
                   min.segment.length = 0, segment.size = 0.3,
@@ -122,7 +128,7 @@ tryCatch({
     cor_mat,
     annotation_col    = annot_df,
     annotation_colors = annot_colors,
-    color             = colorRampPalette(c("#4575B4", "#FFFFBF", "#D73027"))(100),
+    color             = colorRampPalette(c("#3C5488", "white", "#E64B35"))(100),
     breaks            = seq(cor_min, 1.0, length.out = 101),
     main              = "Sample-to-Sample Correlation (Pearson, VST)",
     fontsize          = 11,
@@ -147,9 +153,9 @@ mds_df[[first_col]] <- metadata[mds_df$sample, first_col]
 p_mds <- ggplot(mds_df, aes(x = MDS1, y = MDS2,
                               color = .data[[first_col]],
                               label = sample)) +
-  stat_ellipse(aes(group = .data[[first_col]]),
+  { if (draw_ellipse) stat_ellipse(aes(group = .data[[first_col]]),
                level = 0.9, type = "t",
-               linetype = "dashed", linewidth = 0.6, show.legend = FALSE) +
+               linetype = "dashed", linewidth = 0.6, show.legend = FALSE) } +
   geom_point(size = 4, alpha = 0.88) +
   geom_text_repel(size = 3.2, max.overlaps = 20, show.legend = FALSE,
                   min.segment.length = 0, segment.size = 0.3,
@@ -163,6 +169,42 @@ p_mds <- ggplot(mds_df, aes(x = MDS1, y = MDS2,
   theme_pub()
 
 ggsave(file.path(qc_plots_dir, "mds.png"), p_mds, width = 7, height = 5.5, dpi = 200)
+
+# ── Hierarchical clustering ──────────────────────────────────────────────────────
+message("[02_qc] Computing hierarchical clustering...")
+hc        <- hclust(dist_mat, method = "complete")
+dend_data <- dendro_data(hc, type = "rectangle")
+label_df  <- label(dend_data)
+label_df[[first_col]] <- metadata[as.character(label_df$label), first_col]
+
+p_hclust <- ggplot() +
+  geom_segment(data = segment(dend_data),
+               aes(x = x, y = y, xend = xend, yend = yend),
+               color = "grey35", linewidth = 0.55) +
+  geom_text(data = label_df,
+            aes(x = x, y = 0, label = label,
+                color = .data[[first_col]]),
+            hjust = 1, angle = 90, size = 3.0, show.legend = TRUE) +
+  scale_color_manual(
+    values = setNames(GROUP_COLORS[seq_len(n_grp)],
+                      sort(unique(label_df[[first_col]]))),
+    name = first_col
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.35, 0.05))) +
+  labs(
+    title    = "Sample Hierarchical Clustering",
+    subtitle = "Complete linkage \u00b7 Euclidean distance on VST counts",
+    x = NULL, y = "Distance"
+  ) +
+  theme_pub() +
+  theme(
+    axis.text.x        = element_blank(),
+    axis.ticks.x       = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+
+ggsave(file.path(qc_plots_dir, "hclust.png"), p_hclust,
+       width = max(6, ncol(dds) * 0.45), height = 6, dpi = 200)
 
 # ── Dispersion (custom ggplot) ───────────────────────────────────────────────────
 message("[02_qc] Running DESeq for dispersion plot...")
@@ -313,6 +355,7 @@ qc_metrics <- list(
     pca            = file.path(qc_plots_dir, "pca.png"),
     heatmap        = file.path(qc_plots_dir, "heatmap.png"),
     mds            = file.path(qc_plots_dir, "mds.png"),
+    hclust         = file.path(qc_plots_dir, "hclust.png"),
     dispersion     = file.path(qc_plots_dir, "dispersion.png"),
     library_sizes  = file.path(qc_plots_dir, "library_sizes.png"),
     detected_genes = file.path(qc_plots_dir, "detected_genes.png")

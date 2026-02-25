@@ -10,6 +10,7 @@ suppressPackageStartupMessages({
   library(ggrepel)
   library(dplyr)
   library(tibble)
+  library(ggsci)
 })
 
 # ── Publication-quality theme ────────────────────────────────────────────────────
@@ -35,10 +36,10 @@ theme_pub <- function(base_size = 12) {
     )
 }
 
-# DE color constants
-COL_UP  <- "#D62728"   # RGBA red
-COL_DN  <- "#1F77B4"   # RGBA blue
-COL_NS  <- "#BDBDBD"   # light gray
+# DE color constants — ggsci NPG palette
+COL_UP  <- pal_npg("nrc")(4)[1]   # #E64B35 coral red
+COL_DN  <- pal_npg("nrc")(4)[4]   # #3C5488 navy blue
+COL_NS  <- "#BDBDBD"               # light gray
 
 `%||%` <- function(a, b) if (!is.null(a) && !identical(a, NA)) a else b
 
