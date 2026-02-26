@@ -6,14 +6,23 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 try:
     print("Testing imports...")
-    from deseq2_agent import DESeq2Pipeline, DataAgent, QCAgent, DEAgent, PathwayAgent, ReportAgent
+    from deseq2_agent import (
+        DESeq2Pipeline,
+        DesignDetectionAgent,
+        QCReviewAgent,
+        DEReviewAgent,
+        PathwayReviewAgent,
+        ReportNarrativeAgent,
+    )
     from deseq2_agent.config import LLMConfig
     print("✅ Imports successful")
 
     print("\nTesting Pydantic models...")
-    from deseq2_agent.models import DataAgentOutput
+    from deseq2_agent.models import DesignDecision, QCDecision, DEReviewOutput
     # Verify Pydantic v2 usage
-    assert hasattr(DataAgentOutput, "model_dump"), "Pydantic v2 .model_dump() not found"
+    assert hasattr(DesignDecision, "model_dump"), "Pydantic v2 .model_dump() not found"
+    assert hasattr(QCDecision, "model_dump"), "Pydantic v2 .model_dump() not found"
+    assert hasattr(DEReviewOutput, "model_dump"), "Pydantic v2 .model_dump() not found"
     print("✅ Pydantic v2 confirmed")
 
     print("\nTesting version requirements...")
@@ -21,7 +30,7 @@ try:
     print(f"LangChain version: {metadata.version('langchain')}")
     print(f"LangChain Core version: {metadata.version('langchain-core')}")
     print(f"LangChain OpenAI version: {metadata.version('langchain-openai')}")
-    
+
     print("\n✅ Verification complete!")
 
 except Exception as e:
