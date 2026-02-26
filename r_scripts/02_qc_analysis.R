@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # 02_qc_analysis.R - QC analysis: PCA, correlation, dispersion, library size plots
 # Input:  config.json
-# Output: qc_metrics.json, qc_plots/*.png
+# Output: qc_metrics.json, qc_plots/*.pdf
 
 suppressPackageStartupMessages({
   library(jsonlite)
@@ -39,6 +39,11 @@ theme_pub <- function(base_size = 12) {
 
 # ggsci NPG palette (up to 10 groups)
 GROUP_COLORS <- pal_npg("nrc")(10)
+
+# Save ggplot as PDF (vector format, publication-quality)
+save_gg <- function(path, plot_obj, ...) {
+  ggsave(path, plot_obj, ...)
+}
 
 `%||%` <- function(a, b) if (!is.null(a) && !identical(a, NA)) a else b
 
@@ -117,8 +122,8 @@ for (col in color_cols) {
     ) +
     theme_pub()
 
-  ggsave(file.path(qc_plots_dir, paste0("pca_", col, ".png")), p_pca,
-         width = 7, height = 5.5, dpi = 200)
+  save_gg(file.path(qc_plots_dir, paste0("pca_", col, ".pdf")), p_pca,
+          width = 7, height = 5.5)
 }
 
 # ── Sample correlation heatmap ───────────────────────────────────────────────────
@@ -145,7 +150,7 @@ tryCatch({
     border_color      = "white",
     treeheight_row    = 35,
     treeheight_col    = 35,
-    filename          = file.path(qc_plots_dir, "heatmap.png"),
+    filename          = file.path(qc_plots_dir, "heatmap.pdf"),
     width = 8, height = 7
   )
 }, error = function(e) message("Heatmap warning: ", e$message))
@@ -180,8 +185,8 @@ for (col in color_cols) {
     ) +
     theme_pub()
 
-  ggsave(file.path(qc_plots_dir, paste0("mds_", col, ".png")), p_mds,
-         width = 7, height = 5.5, dpi = 200)
+  save_gg(file.path(qc_plots_dir, paste0("mds_", col, ".pdf")), p_mds,
+          width = 7, height = 5.5)
 }
 
 # ── Hierarchical clustering ──────────────────────────────────────────────────────
@@ -217,8 +222,8 @@ p_hclust <- ggplot() +
     panel.grid.major.x = element_blank()
   )
 
-ggsave(file.path(qc_plots_dir, "hclust.png"), p_hclust,
-       width = max(6, ncol(dds) * 0.45), height = 6, dpi = 200)
+save_gg(file.path(qc_plots_dir, "hclust.pdf"), p_hclust,
+        width = max(6, ncol(dds) * 0.45), height = 6)
 
 # ── Dispersion (custom ggplot) ───────────────────────────────────────────────────
 message("[02_qc] Running DESeq for dispersion plot...")
@@ -264,10 +269,10 @@ if (!is.null(dds_for_disp)) {
       ) +
       theme_pub()
 
-    ggsave(file.path(qc_plots_dir, "dispersion.png"), p_disp,
-           width = 8, height = 5.5, dpi = 200)
+    save_gg(file.path(qc_plots_dir, "dispersion.pdf"), p_disp,
+            width = 8, height = 5.5)
   } else {
-    png(file.path(qc_plots_dir, "dispersion.png"), width = 1200, height = 900, res = 150)
+    pdf(file.path(qc_plots_dir, "dispersion.pdf"), width = 8, height = 6)
     plotDispEsts(dds_for_disp, main = "Dispersion Estimates")
     dev.off()
   }
@@ -294,8 +299,8 @@ p_lib <- ggplot(lib_df, aes(x = sample, y = library_size,
   theme_pub() +
   theme(panel.grid.major.y = element_blank())
 
-ggsave(file.path(qc_plots_dir, "library_sizes.png"), p_lib,
-       width = 7, height = 5, dpi = 200)
+save_gg(file.path(qc_plots_dir, "library_sizes.pdf"), p_lib,
+        width = 7, height = 5)
 
 # ── Detected genes ───────────────────────────────────────────────────────────────
 det_df <- data.frame(sample = names(detected_genes), n_genes = detected_genes)
@@ -318,8 +323,8 @@ p_det <- ggplot(det_df, aes(x = sample, y = n_genes,
   theme_pub() +
   theme(panel.grid.major.y = element_blank())
 
-ggsave(file.path(qc_plots_dir, "detected_genes.png"), p_det,
-       width = 7, height = 5, dpi = 200)
+save_gg(file.path(qc_plots_dir, "detected_genes.pdf"), p_det,
+        width = 7, height = 5)
 
 # ── IQR-based outlier detection ──────────────────────────────────────────────────
 detect_outliers_iqr <- function(metric_vec, names_vec, metric_name, threshold = 1.5) {
@@ -367,19 +372,19 @@ qc_metrics <- list(
   outlier_samples_flagged = outlier_samples_flagged,
   plots = c(
     setNames(
-      lapply(color_cols, function(col) file.path(qc_plots_dir, paste0("pca_", col, ".png"))),
+      lapply(color_cols, function(col) file.path(qc_plots_dir, paste0("pca_", col, ".pdf"))),
       paste0("pca_", color_cols)
     ),
     setNames(
-      lapply(color_cols, function(col) file.path(qc_plots_dir, paste0("mds_", col, ".png"))),
+      lapply(color_cols, function(col) file.path(qc_plots_dir, paste0("mds_", col, ".pdf"))),
       paste0("mds_", color_cols)
     ),
     list(
-      heatmap        = file.path(qc_plots_dir, "heatmap.png"),
-      hclust         = file.path(qc_plots_dir, "hclust.png"),
-      dispersion     = file.path(qc_plots_dir, "dispersion.png"),
-      library_sizes  = file.path(qc_plots_dir, "library_sizes.png"),
-      detected_genes = file.path(qc_plots_dir, "detected_genes.png")
+      heatmap        = file.path(qc_plots_dir, "heatmap.pdf"),
+      hclust         = file.path(qc_plots_dir, "hclust.pdf"),
+      dispersion     = file.path(qc_plots_dir, "dispersion.pdf"),
+      library_sizes  = file.path(qc_plots_dir, "library_sizes.pdf"),
+      detected_genes = file.path(qc_plots_dir, "detected_genes.pdf")
     )
   )
 )

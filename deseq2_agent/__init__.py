@@ -25,6 +25,8 @@ Quick start::
 
 from deseq2_agent.config import LLMConfig, get_llm
 from deseq2_agent.models import (
+    DesignDecision,
+    ContrastSuggestion,
     QCDecision,
     OutlierSample,
     DEReviewOutput,
@@ -38,6 +40,7 @@ from deseq2_agent.pipeline import DESeq2Pipeline, PipelineConfig, PipelineResult
 from deseq2_agent.runner import RScriptRunner, RScriptResult, RScriptError
 from deseq2_agent.agents import (
     BaseAgent,
+    DesignDetectionAgent,
     QCReviewAgent,
     DEReviewAgent,
     PathwayReviewAgent,
@@ -57,6 +60,8 @@ __all__ = [
     "PipelineResults",
     "ContrastConfig",
     # Models
+    "DesignDecision",
+    "ContrastSuggestion",
     "QCDecision",
     "OutlierSample",
     "DEReviewOutput",
@@ -71,6 +76,7 @@ __all__ = [
     "RScriptError",
     # Agents
     "BaseAgent",
+    "DesignDetectionAgent",
     "QCReviewAgent",
     "DEReviewAgent",
     "PathwayReviewAgent",

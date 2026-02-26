@@ -41,6 +41,11 @@ COL_UP  <- pal_npg("nrc")(4)[1]   # #E64B35 coral red
 COL_DN  <- pal_npg("nrc")(4)[4]   # #3C5488 navy blue
 COL_NS  <- "#BDBDBD"               # light gray
 
+# Save ggplot as PDF (vector format, publication-quality)
+save_gg <- function(path, plot_obj, ...) {
+  ggsave(path, plot_obj, ...)
+}
+
 `%||%` <- function(a, b) if (!is.null(a) && !identical(a, NA)) a else b
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -213,8 +218,8 @@ for (ct in contrasts_cfg) {
     theme(legend.position = "bottom",
           legend.margin   = margin(t = -4))
 
-  ggsave(file.path(de_plots_dir, paste0(ct_name, "_volcano.png")), p_volcano,
-         width = 7, height = 6, dpi = 200)
+  save_gg(file.path(de_plots_dir, paste0(ct_name, "_volcano.pdf")), p_volcano,
+          width = 7, height = 6)
 
   # ── MA plot ───────────────────────────────────────────────────────────────────
   ma_df <- res_df %>%
@@ -267,8 +272,8 @@ for (ct in contrasts_cfg) {
     theme(legend.position = "bottom",
           legend.margin   = margin(t = -4))
 
-  ggsave(file.path(de_plots_dir, paste0(ct_name, "_ma.png")), p_ma,
-         width = 7, height = 6, dpi = 200)
+  save_gg(file.path(de_plots_dir, paste0(ct_name, "_ma.pdf")), p_ma,
+          width = 7, height = 6)
 
   # Store summary info
   top20_up   <- head(sig_up[, c("gene_id",
@@ -290,8 +295,8 @@ for (ct in contrasts_cfg) {
     padj_threshold   = padj_thr,
     lfc_threshold    = lfc_thr,
     plots = list(
-      volcano = file.path(de_plots_dir, paste0(ct_name, "_volcano.png")),
-      ma      = file.path(de_plots_dir, paste0(ct_name, "_ma.png"))
+      volcano = file.path(de_plots_dir, paste0(ct_name, "_volcano.pdf")),
+      ma      = file.path(de_plots_dir, paste0(ct_name, "_ma.pdf"))
     )
   )
 }

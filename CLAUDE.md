@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DESeq2Agent is an end-to-end RNA-seq differential expression analysis pipeline (v2.0.0). It runs DESeq2, QC, and enrichment analysis via R subprocesses, with LLM agents interpreting results at key stages and producing a self-contained HTML report.
 
-Input: raw counts CSV + metadata CSV + contrast config
-Output: `results/report.html` + all intermediate CSVs, JSONs, and PNGs
+Input: raw counts CSV + metadata CSV + optional config JSON (contrasts auto-detected if omitted)
+Output: `results/report.html` + all intermediate CSVs, JSONs, and PDFs
 
 ## Commands
 
@@ -15,7 +15,14 @@ Output: `results/report.html` + all intermediate CSVs, JSONs, and PNGs
 # Development install (editable)
 pip install -e ".[dev]"
 
-# Run the pipeline with demo data (--config is required)
+# Minimal: auto-detect design and contrasts from metadata
+python examples/run_pipeline.py \
+  --counts datademo/counts.csv \
+  --metadata datademo/metadata.csv \
+  --output results/ \
+  --provider deepseek
+
+# With config (contrasts defined, skips auto-detection)
 python examples/run_pipeline.py \
   --counts datademo/counts.csv \
   --metadata datademo/metadata.csv \
@@ -23,7 +30,16 @@ python examples/run_pipeline.py \
   --output results/ \
   --provider deepseek
 
-# Full example with all optional overrides
+# With config (species only, contrasts auto-detected)
+# config.json: {"species": "dog"}
+python examples/run_pipeline.py \
+  --counts path/to/counts.csv \
+  --metadata path/to/metadata.csv \
+  --config path/to/config.json \
+  --output ./results/ \
+  --provider deepseek
+
+# Full example with all optional CLI overrides (CLI > config > defaults)
 python examples/run_pipeline.py \
   --counts path/to/counts.csv \
   --metadata path/to/metadata.csv \
@@ -35,7 +51,11 @@ python examples/run_pipeline.py \
   --lfc 1.0               # log2 fold-change threshold (overrides config default: 1.0)
 
 # Interactive mode (LLM proposes outlier removal, user confirms)
-python examples/run_pipeline.py --config datademo/config.json --interactive
+python examples/run_pipeline.py \
+  --counts datademo/counts.csv \
+  --metadata datademo/metadata.csv \
+  --config datademo/config.json \
+  --interactive --provider deepseek
 
 # Run tests
 pytest tests/
@@ -59,41 +79,52 @@ Any OpenAI-compatible endpoint works via `base_url` in `LLMConfig`.
 
 ## Architecture
 
-### 9-Step Pipeline
+### 10-Step Pipeline (Step 0–9)
 
 ```
-counts.csv + metadata.csv + contrasts
+counts.csv + metadata.csv + optional config.json
   │
-  ▼ [R] 01_data_prep.R
+  ▼ [LLM] Step 0: DesignDetectionAgent
+  │   Analyzes metadata structure (columns, unique values, sample counts)
+  │   Detects design type: simple_two_group | longitudinal | paired | factorial | multi_group
+  │   Suggests analysis_strategy: single_run | per_timepoint | per_condition
+  │   Auto-generates contrasts (with subset_column/subset_value for complex designs)
+  │   → DesignDecision; skipped if user provides contrasts in config
+  │
+  ▼ [R] Step 1: 01_data_prep.R
   │   Auto-detect gene IDs (ENSEMBL/ENTREZ/SYMBOL), normalize to ENSEMBL,
   │   filter low counts, write dds.rds + id_mapping.csv + counts_ensembl.csv
   │
-  ▼ [R] 02_qc_analysis.R
+  ▼ [R] Step 2: 02_qc_analysis.R
   │   Auto-detect informative metadata columns (2 ≤ n_unique ≤ 10 AND n_unique < n_samples)
-  │   PCA (top 2000 variable genes) + MDS — one plot per qualifying column → pca_{col}.png / mds_{col}.png
-  │   Correlation heatmap, hierarchical clustering (hclust.png), dispersion, library sizes
-  │   IQR-based outlier flagging → qc_metrics.json + qc_plots/*.png
+  │   PCA (top 2000 variable genes) + MDS — one plot per qualifying column → pca_{col}.pdf / mds_{col}.pdf
+  │   Correlation heatmap, hierarchical clustering (hclust.pdf), dispersion, library sizes
+  │   IQR-based outlier flagging → qc_metrics.json + qc_plots/*.pdf
   │
-  ▼ [LLM] QCReviewAgent
+  ▼ [LLM] Step 3: QCReviewAgent
   │   Decides outlier removal and data usability → QCDecision
   │   interactive mode: prompts user per candidate; auto mode: LLM decides
   │
-  ▼ [R] 03_de_analysis.R
+  ▼ [R] Step 4: 03_de_analysis.R
   │   DESeq2 + lfcShrink(apeglm) excluding removed samples;
+  │   Supports subset_column/subset_value for per-timepoint contrasts
   │   volcano + MA plots → {contrast}_results.csv + de_summary.json
   │
-  ▼ [LLM] DEReviewAgent → DEReviewOutput
+  ▼ [LLM] Step 5: DEReviewAgent → DEReviewOutput
   │
-  ▼ [R] 04_enrichment.R
-  │   GSEA (GO+KEGG) + ORA (GO+KEGG) via clusterProfiler;
-  │   skips ORA if <10 sig genes → enrichment_results_{contrast}.json + dotplots
+  ▼ [R] Step 6: 04_enrichment.R
+  │   GSEA (GO+KEGG) + ORA (GO+KEGG) via clusterProfiler; set.seed(42)
+  │   Skips ORA if <10 sig genes
+  │   → enrichment_results_{contrast}.json + dotplots (PDF)
+  │   → enrichment/tables/{contrast}/*.csv (full result tables)
   │
-  ▼ [LLM] PathwayReviewAgent → PathwayReviewOutput
+  ▼ [LLM] Step 7: PathwayReviewAgent → PathwayReviewOutput
   │
-  ▼ [LLM] ReportNarrativeAgent → ReportNarrative
+  ▼ [LLM] Step 8: ReportNarrativeAgent → ReportNarrative
   │
-  ▼ [HTML] HTMLReportBuilder
-      Base64-encodes all PNGs into single self-contained report.html (~1-5 MB)
+  ▼ [HTML] Step 9: HTMLReportBuilder
+      Converts PDFs → PNGs (via sips on macOS), base64-encodes into
+      single self-contained report.html (~1-5 MB)
 ```
 
 ### R-Python Communication
@@ -106,12 +137,13 @@ Before each R step: Python writes `{output_dir}/config.json` (atomic write via t
 
 - `deseq2_agent/config.py`: `LLMConfig` dataclass + `get_llm()` factory
 - `deseq2_agent/runner.py`: `RScriptRunner` — `write_config()`, `run()`, `check_r_available()`, `validate_outputs()`; `RScriptError` exception; `R_SCRIPTS_DIR = Path(__file__).parent.parent / "r_scripts"`
-- `deseq2_agent/models.py`: Pydantic v2 output models — `QCDecision`, `DEReviewOutput`, `PathwayReviewOutput`, `ReportNarrative` (and their nested types)
-- `deseq2_agent/prompts.py`: 4 `ChatPromptTemplate` instances — **all in Simplified Chinese**
+- `deseq2_agent/models.py`: Pydantic v2 output models — `DesignDecision`, `ContrastSuggestion`, `QCDecision`, `DEReviewOutput`, `PathwayReviewOutput`, `ReportNarrative` (and their nested types)
+- `deseq2_agent/prompts.py`: 5 `ChatPromptTemplate` instances — **all in Simplified Chinese**
 - `deseq2_agent/agents/base.py`: Abstract `BaseAgent`; builds LCEL chain as `prompt_template | llm.with_structured_output(output_model, method="function_calling")`
+- `deseq2_agent/agents/design_agent.py`: `DesignDetectionAgent` — Step 0, auto-detects experimental design
 - `deseq2_agent/agents/qc_agent.py`: `QCReviewAgent` + `ConsoleIO` for interactive mode
-- `deseq2_agent/pipeline.py`: `DESeq2Pipeline.run()` — 9-step orchestrator; `PipelineConfig`, `PipelineResults`
-- `deseq2_agent/report/html_builder.py`: `HTMLReportBuilder.build()` — Jinja2 templating + base64 PNG embedding
+- `deseq2_agent/pipeline.py`: `DESeq2Pipeline.run()` — 10-step orchestrator; `PipelineConfig`, `PipelineResults`, `_build_metadata_summary()`
+- `deseq2_agent/report/html_builder.py`: `HTMLReportBuilder.build()` — Jinja2 templating + PDF→PNG conversion + base64 embedding
 - `deseq2_agent/report/templates/report.html.jinja2`: Self-contained HTML template
 
 ### QC Plots Naming Convention
@@ -119,8 +151,8 @@ Before each R step: Python writes `{output_dir}/config.json` (atomic write via t
 `02_qc_analysis.R` auto-detects informative grouping columns from metadata using the heuristic:
 `2 ≤ n_unique ≤ 10 AND n_unique < n_samples` — skips per-sample IDs and constant columns.
 
-- PCA/MDS plots: `qc_plots/pca_{col}.png`, `qc_plots/mds_{col}.png` (one per qualifying column)
-- Fixed plots: `qc_plots/heatmap.png`, `qc_plots/hclust.png`, `qc_plots/dispersion.png`, `qc_plots/library_sizes.png`, `qc_plots/detected_genes.png`
+- PCA/MDS plots: `qc_plots/pca_{col}.pdf`, `qc_plots/mds_{col}.pdf` (one per qualifying column)
+- Fixed plots: `qc_plots/heatmap.pdf`, `qc_plots/hclust.pdf`, `qc_plots/dispersion.pdf`, `qc_plots/library_sizes.pdf`, `qc_plots/detected_genes.pdf`
 - `primary_col` = first qualifying column, used for heatmap/hclust/library_sizes/detected_genes coloring
 - Falls back to first metadata column if no column qualifies
 
@@ -140,6 +172,21 @@ class QCReviewAgent(BaseAgent):
 `validate_input()` must check required fields and serialize `dict`/`list` values to JSON strings via `json.dumps(..., ensure_ascii=False)`.
 
 **Cross-provider compatibility**: `method="function_calling"` is required in `with_structured_output()` — DeepSeek does not support the default `json_schema` response format.
+
+### DesignDetectionAgent (Step 0)
+
+Runs before any R scripts. Analyzes metadata structure via `_build_metadata_summary()` which reads the raw CSV and produces per-column stats (n_unique, unique_values, value_counts).
+
+**Contrast auto-detection flow**:
+1. If user provides contrasts in config → use them directly, DesignDetectionAgent runs as advisory only
+2. If no contrasts → DesignDetectionAgent generates `suggested_contrasts` → pipeline uses them
+3. In interactive mode → user sees design decision and confirms before proceeding
+
+**Supported design types**: `simple_two_group`, `longitudinal`, `paired`, `factorial`, `multi_group`
+
+**Per-timepoint subsetting**: For longitudinal designs, contrasts include `subset_column` and `subset_value` fields. `03_de_analysis.R` filters samples to only those matching the subset before running DESeq2.
+
+**Config priority**: CLI flags > config.json values > hardcoded defaults
 
 ### R Packages Required
 
@@ -163,10 +210,12 @@ Requires: R ≥ 4.2, Bioconductor ≥ 3.16
 | `simplifyDataFrame = TRUE` (R default) collapses contrast arrays | All R scripts use `simplifyDataFrame = FALSE` |
 | `samples_to_remove` from empty JSON list → R list not character vector | `as.character(unlist(config$samples_to_remove %||% list()))` |
 | `ensembl_to_entrez()` must return same length as input (for building data frames) | NAs preserved; `entrez_vec()` is the filtered version for ORA/GSEA |
+| GSEA results non-deterministic across runs | `set.seed(42)` in `04_enrichment.R` before any analysis |
+| DE summary JSON truncated for many contrasts | `de_summary_text` truncated at 16000 chars (increased from 8000) |
 
 ## Prompts Language
 
-All prompts are in **Simplified Chinese** with domain-specific bioinformatics roles. Do not modify without understanding Chinese.
+All 5 prompts (`DESIGN_DETECTION_PROMPT`, `QC_REVIEW_PROMPT`, `DE_REVIEW_PROMPT`, `PATHWAY_REVIEW_PROMPT`, `REPORT_NARRATIVE_PROMPT`) are in **Simplified Chinese** with domain-specific bioinformatics roles. Do not modify without understanding Chinese.
 
 ## Design Constraints
 

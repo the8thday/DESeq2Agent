@@ -354,7 +354,7 @@ class DESeq2Pipeline:
         # =========================================================
         logger.info("=== Step 5: DE Review (LLM) ===")
 
-        de_summary_text = json.dumps(de_summary, indent=2, ensure_ascii=False)[:8000]
+        de_summary_text = json.dumps(de_summary, indent=2, ensure_ascii=False)[:16000]
         qc_context = (
             f"QC摘要: {qc_decision.quality_summary}\n"
             f"移除样本: {', '.join(qc_decision.samples_to_remove) or '无'}\n"

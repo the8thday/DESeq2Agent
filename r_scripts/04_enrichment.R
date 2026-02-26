@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # 04_enrichment.R - GSEA and ORA enrichment analysis via clusterProfiler
 # Input:  config.json
-# Output: enrichment_results_{contrast}.json, enrichment/plots/{contrast}_*.png
+# Output: enrichment_results_{contrast}.json, enrichment/plots/{contrast}_*.pdf, enrichment/tables/{contrast}/*.csv
 
 suppressPackageStartupMessages({
   library(jsonlite)
@@ -158,7 +158,7 @@ result_to_df <- function(enrich_obj, top_n = 20) {
 
 save_plot_safe <- function(plot_obj, path, w = 12, h = 8) {
   tryCatch(
-    ggsave(path, plot_obj, width = w, height = h, dpi = 200),
+    ggsave(path, plot_obj, width = w, height = h),
     error = function(e) message("Plot save failed for ", path, ": ", e$message)
   )
 }
@@ -233,7 +233,7 @@ for (ct in contrasts_cfg) {
         theme_pub() +
         theme(axis.text.y = element_text(size = 8.5),
               legend.position = "right")
-      save_plot_safe(p, file.path(ct_plot_dir, "gsea_go_dotplot.png"), w = 14, h = 8)
+      save_plot_safe(p, file.path(ct_plot_dir, "gsea_go_dotplot.pdf"), w = 14, h = 8)
     }, error = function(e) message("GSEA GO dotplot failed: ", e$message))
   }
 
@@ -248,7 +248,7 @@ for (ct in contrasts_cfg) {
         theme_pub() +
         theme(axis.text.y = element_text(size = 8.5),
               legend.position = "right")
-      save_plot_safe(p, file.path(ct_plot_dir, "gsea_kegg_dotplot.png"), w = 14, h = 8)
+      save_plot_safe(p, file.path(ct_plot_dir, "gsea_kegg_dotplot.pdf"), w = 14, h = 8)
     }, error = function(e) message("GSEA KEGG dotplot failed: ", e$message))
   }
 
@@ -262,7 +262,7 @@ for (ct in contrasts_cfg) {
         theme_pub() +
         theme(axis.text.y = element_text(size = 9),
               legend.position = "right")
-      save_plot_safe(p, file.path(ct_plot_dir, "ora_go_dotplot.png"), w = 10, h = 7)
+      save_plot_safe(p, file.path(ct_plot_dir, "ora_go_dotplot.pdf"), w = 10, h = 7)
     }, error = function(e) message("ORA GO dotplot failed: ", e$message))
   }
 
@@ -276,7 +276,7 @@ for (ct in contrasts_cfg) {
         theme_pub() +
         theme(axis.text.y = element_text(size = 9),
               legend.position = "right")
-      save_plot_safe(p, file.path(ct_plot_dir, "ora_kegg_dotplot.png"), w = 10, h = 7)
+      save_plot_safe(p, file.path(ct_plot_dir, "ora_kegg_dotplot.pdf"), w = 10, h = 7)
     }, error = function(e) message("ORA KEGG dotplot failed: ", e$message))
   }
 
@@ -315,10 +315,10 @@ for (ct in contrasts_cfg) {
     ora_go        = result_to_df(ora_go),
     ora_kegg      = result_to_df(ora_kegg),
     plots         = list(
-      gsea_go_dotplot   = file.path(ct_plot_dir, "gsea_go_dotplot.png"),
-      gsea_kegg_dotplot = file.path(ct_plot_dir, "gsea_kegg_dotplot.png"),
-      ora_go_dotplot    = file.path(ct_plot_dir, "ora_go_dotplot.png"),
-      ora_kegg_dotplot  = file.path(ct_plot_dir, "ora_kegg_dotplot.png")
+      gsea_go_dotplot   = file.path(ct_plot_dir, "gsea_go_dotplot.pdf"),
+      gsea_kegg_dotplot = file.path(ct_plot_dir, "gsea_kegg_dotplot.pdf"),
+      ora_go_dotplot    = file.path(ct_plot_dir, "ora_go_dotplot.pdf"),
+      ora_kegg_dotplot  = file.path(ct_plot_dir, "ora_kegg_dotplot.pdf")
     )
   )
 
