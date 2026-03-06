@@ -81,6 +81,7 @@ class HTMLReportBuilder:
         contrasts: List[Dict],
         species: str,
         output_path: str,
+        edger_sensitivity: Optional[Dict] = None,
     ) -> str:
         """Build and write the HTML report.
 
@@ -131,6 +132,7 @@ class HTMLReportBuilder:
             contrasts=contrasts,
             species=species,
             qc_metrics=qc_metrics,
+            edger_sensitivity=edger_sensitivity or {},
         )
 
         output_path = os.path.abspath(output_path)

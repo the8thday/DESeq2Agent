@@ -113,10 +113,16 @@ counts.csv + metadata.csv + optional config.json
   ▼ [LLM] Step 5: DEReviewAgent → DEReviewOutput
   │
   ▼ [R] Step 6: 04_enrichment.R
-  │   GSEA (GO+KEGG) + ORA (GO+KEGG) via clusterProfiler; set.seed(42)
-  │   Skips ORA if <10 sig genes
+  │   GSEA (GO+KEGG+Reactome) + ORA (GO+KEGG+Reactome) via clusterProfiler/ReactomePA
+  │   Reactome only for human; set.seed(42); Skips ORA if <10 sig genes
   │   → enrichment_results_{contrast}.json + dotplots (PDF)
   │   → enrichment/tables/{contrast}/*.csv (full result tables)
+  │
+  ▼ [R] Step 6b: 05_edger_sensitivity.R
+  │   edgeR glmQLFTest as independent sensitivity analysis
+  │   Per-contrast concordance with DESeq2: overlap, Spearman ρ, direction agreement
+  │   Non-fatal: pipeline continues if edgeR fails
+  │   → edger_{contrast}_results.csv + edger_sensitivity.json
   │
   ▼ [LLM] Step 7: PathwayReviewAgent → PathwayReviewOutput
   │
@@ -192,6 +198,8 @@ Runs before any R scripts. Analyzes metadata structure via `_build_metadata_summ
 
 ```r
 BiocManager::install(c("DESeq2", "DEGreport", "clusterProfiler",
+                        "ReactomePA", "reactome.db",  # Reactome (human only)
+                        "edgeR",                       # sensitivity analysis
                         "org.Hs.eg.db", "org.Mm.eg.db",
                         "org.Rn.eg.db",   # rat
                         "org.Cf.eg.db",   # dog (beagle)
@@ -212,6 +220,8 @@ Requires: R ≥ 4.2, Bioconductor ≥ 3.16
 | `ensembl_to_entrez()` must return same length as input (for building data frames) | NAs preserved; `entrez_vec()` is the filtered version for ORA/GSEA |
 | GSEA results non-deterministic across runs | `set.seed(42)` in `04_enrichment.R` before any analysis |
 | DE summary JSON truncated for many contrasts | `de_summary_text` truncated at 16000 chars (increased from 8000) |
+| Reactome enrichment only available for human | `is_human` flag in `04_enrichment.R`; non-human species get `gsea_reactome: null, ora_reactome: null` |
+| edgeR sensitivity analysis is non-fatal | `pipeline.py` wraps in try/except; missing `edger_sensitivity.json` → empty dict |
 
 ## Prompts Language
 

@@ -394,8 +394,27 @@ class DESeq2Pipeline:
                     "gsea_kegg": None,
                     "ora_go": None,
                     "ora_kegg": None,
+                    "gsea_reactome": None,
+                    "ora_reactome": None,
                     "plots": {},
                 })
+
+        # =========================================================
+        # Step 6b: edgeR Sensitivity Analysis (R)
+        # =========================================================
+        logger.info("=== Step 6b: edgeR Sensitivity Analysis (R) ===")
+        edger_sensitivity = {}
+        try:
+            runner.run("05_edger_sensitivity.R")
+            edger_json_path = os.path.join(output_dir, "edger_sensitivity.json")
+            if os.path.exists(edger_json_path):
+                with open(edger_json_path, "r") as f:
+                    edger_sensitivity = json.load(f)
+                logger.info(f"edgeR sensitivity: {len(edger_sensitivity)} contrast(s) analyzed")
+            else:
+                logger.warning("edger_sensitivity.json not found after edgeR run")
+        except RScriptError as e:
+            logger.warning(f"edgeR sensitivity analysis failed (non-fatal): {e}")
 
         # =========================================================
         # Step 7: Pathway Review (LLM)
@@ -406,7 +425,7 @@ class DESeq2Pipeline:
             lines = [f"对比度: {enrich['contrast_name']}"]
             if enrich.get("ora_skipped"):
                 lines.append("  ORA已跳过（显著基因<10）")
-            for key in ("gsea_go", "gsea_kegg", "ora_go", "ora_kegg"):
+            for key in ("gsea_go", "gsea_kegg", "ora_go", "ora_kegg", "gsea_reactome", "ora_reactome"):
                 rows = enrich.get(key)
                 if rows:
                     top3 = [r.get("Description", r.get("ID", "")) for r in rows[:3]]
@@ -442,8 +461,24 @@ class DESeq2Pipeline:
         qc_narrative_input = (
             f"QC决策: {qc_decision.model_dump_json(indent=2)}"
         )
+        edger_summary_text = ""
+        if edger_sensitivity:
+            edger_lines = []
+            for ct_name, stats in edger_sensitivity.items():
+                if isinstance(stats, dict) and "spearman_logfc_cor" in stats:
+                    edger_lines.append(
+                        f"  {ct_name}: DESeq2显著={stats.get('deseq2_n_sig', 'N/A')}, "
+                        f"edgeR显著={stats.get('edger_n_sig', 'N/A')}, "
+                        f"重叠={stats.get('overlap_n', 'N/A')}, "
+                        f"Spearman ρ={stats.get('spearman_logfc_cor', 'N/A')}, "
+                        f"方向一致性={stats.get('direction_agreement_pct', 'N/A')}%"
+                    )
+            if edger_lines:
+                edger_summary_text = "\n\nedgeR敏感性分析（交叉验证）:\n" + "\n".join(edger_lines)
+
         de_narrative_input = (
             f"DE解读: {de_review.model_dump_json(indent=2)}"
+            f"{edger_summary_text}"
         )
         pathway_narrative_input = (
             f"通路解读: {pathway_review.model_dump_json(indent=2)}"
@@ -479,6 +514,7 @@ class DESeq2Pipeline:
             contrasts=[c.to_dict() for c in contrast_objs],
             species=species,
             output_path=report_path,
+            edger_sensitivity=edger_sensitivity,
         )
 
         logger.info(f"Pipeline complete! Report: {results.report_path}")

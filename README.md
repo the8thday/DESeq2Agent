@@ -8,7 +8,9 @@ DESeq2Agent takes raw count data and metadata, automatically detects the experim
 
 - **Intelligent design detection**: `DesignDetectionAgent` auto-detects experimental design (simple two-group, longitudinal, paired, factorial, multi-group) and generates appropriate contrasts — no manual contrast specification required
 - **True end-to-end pipeline**: raw counts CSV → HTML report, no pre-processing required
-- **R subprocess integration**: DESeq2, clusterProfiler, and QC all run as R scripts; Python orchestrates and validates
+- **Reactome pathway analysis**: GSEA + ORA via ReactomePA for human samples, cross-validated with GO/KEGG
+- **edgeR sensitivity analysis**: Independent cross-method validation (edgeR glmQLFTest) with concordance statistics
+- **R subprocess integration**: DESeq2, edgeR, clusterProfiler, and QC all run as R scripts; Python orchestrates and validates
 - **5 LLM agents** with structured Pydantic v2 outputs:
   - **DesignDetectionAgent**: analyzes metadata, detects design type, generates contrasts
   - **QCReviewAgent**: interprets QC metrics, decides outlier removal
@@ -34,6 +36,8 @@ DESeq2Agent takes raw count data and metadata, automatically detects the experim
 **R** (≥ 4.2, Bioconductor ≥ 3.16)
 ```r
 BiocManager::install(c("DESeq2", "DEGreport", "clusterProfiler",
+                        "ReactomePA", "reactome.db",  # Reactome (human only)
+                        "edgeR",                       # sensitivity analysis
                         "org.Hs.eg.db", "org.Mm.eg.db",
                         "org.Rn.eg.db",   # rat
                         "org.Cf.eg.db",   # dog (beagle)
@@ -241,8 +245,12 @@ counts.csv + metadata.csv + optional config.json
   ▼ [LLM] Step 5: DEReviewAgent → DEReviewOutput
   │
   ▼ [R] Step 6: 04_enrichment.R
-  │   GSEA + ORA (GO/KEGG) via clusterProfiler
-  │   Full result tables exported as CSV
+  │   GSEA + ORA (GO/KEGG/Reactome) via clusterProfiler + ReactomePA
+  │   Reactome only for human; full result tables exported as CSV
+  │
+  ▼ [R] Step 6b: 05_edger_sensitivity.R
+  │   edgeR glmQLFTest cross-validation (non-fatal)
+  │   Concordance stats: overlap, Spearman ρ, direction agreement
   │
   ▼ [LLM] Step 7: PathwayReviewAgent → PathwayReviewOutput
   │
@@ -279,7 +287,8 @@ DESeq2Agent/
 │   ├── 01_data_prep.R         Gene ID mapping, DDS construction
 │   ├── 02_qc_analysis.R       QC plots (PDF) + IQR outlier detection
 │   ├── 03_de_analysis.R       DESeq2 + lfcShrink(apeglm), subset support
-│   └── 04_enrichment.R        clusterProfiler GSEA + ORA, CSV export
+│   ├── 04_enrichment.R        clusterProfiler + ReactomePA GSEA/ORA, CSV export
+│   └── 05_edger_sensitivity.R edgeR glmQLFTest cross-validation
 ├── datademo/
 │   ├── counts.csv             100-gene × 6-sample synthetic demo
 │   ├── metadata.csv
@@ -381,7 +390,11 @@ results/
 │       ├── gsea_go.csv
 │       ├── gsea_kegg.csv
 │       ├── ora_go.csv
-│       └── ora_kegg.csv
+│       ├── ora_kegg.csv
+│       ├── gsea_reactome.csv         (human only)
+│       └── ora_reactome.csv          (human only)
+├── edger_{contrast}_results.csv      edgeR DE results (sensitivity)
+├── edger_sensitivity.json            Cross-method concordance stats
 ```
 
 ## License

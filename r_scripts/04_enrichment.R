@@ -69,6 +69,15 @@ if (species %in% c("human", "hs", "homo_sapiens")) {
        ". Supported: 'human', 'mouse', 'rat', 'dog'.")
 }
 
+# Reactome enrichment is only available for human
+is_human <- species %in% c("human", "hs", "homo_sapiens")
+if (is_human) {
+  suppressPackageStartupMessages(library(ReactomePA))
+  message("[04_enrichment] Reactome analysis enabled (human)")
+} else {
+  message("[04_enrichment] Reactome analysis skipped (non-human species: ", species, ")")
+}
+
 enrich_plots_dir <- file.path(output_dir, "enrichment", "plots")
 dir.create(enrich_plots_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -149,6 +158,33 @@ safe_enrich_kegg <- function(gene_ids, universe_ids) {
   )
 }
 
+# ── Reactome functions (human only) ──────────────────────────────────────────
+safe_gsea_reactome <- function(gene_list) {
+  if (!is_human) return(NULL)
+  tryCatch(
+    gsePathway(geneList      = gene_list,
+               organism      = "human",
+               pAdjustMethod = "BH",
+               pvalueCutoff  = 0.1,
+               verbose       = FALSE),
+    error = function(e) { message("gsePathway (Reactome) failed: ", e$message); NULL }
+  )
+}
+
+safe_enrich_reactome <- function(gene_ids, universe_ids) {
+  if (!is_human) return(NULL)
+  if (length(gene_ids) < 10) return(NULL)
+  tryCatch(
+    enrichPathway(gene          = gene_ids,
+                  universe      = universe_ids,
+                  organism      = "human",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff  = padj_thr,
+                  readable      = TRUE),
+    error = function(e) { message("enrichPathway (Reactome) failed: ", e$message); NULL }
+  )
+}
+
 result_to_df <- function(enrich_obj, top_n = 20) {
   if (is.null(enrich_obj)) return(NULL)
   df <- tryCatch(as.data.frame(enrich_obj), error = function(e) NULL)
@@ -212,11 +248,18 @@ for (ct in contrasts_cfg) {
   message("[04_enrichment] Running GSEA KEGG...")
   gsea_kegg <- if (length(gene_list) > 10) safe_gsea_kegg(gene_list) else NULL
 
+  # ── Reactome GSEA (human only) ──────────────────────────────────────────────
+  message("[04_enrichment] Running GSEA Reactome...")
+  gsea_reactome <- if (length(gene_list) > 10) safe_gsea_reactome(gene_list) else NULL
+
   # ── ORA ──────────────────────────────────────────────────────────────────────
   message("[04_enrichment] Running ORA GO...")
   ora_go   <- if (!ora_skipped) safe_enrich_go(sig_entrez, universe_entrez) else NULL
   message("[04_enrichment] Running ORA KEGG...")
   ora_kegg <- if (!ora_skipped) safe_enrich_kegg(sig_entrez, universe_entrez) else NULL
+  # ── Reactome ORA (human only) ──────────────────────────────────────────────
+  message("[04_enrichment] Running ORA Reactome...")
+  ora_reactome <- if (!ora_skipped) safe_enrich_reactome(sig_entrez, universe_entrez) else NULL
 
   # ── Plots ─────────────────────────────────────────────────────────────────────
   ct_plot_dir <- file.path(enrich_plots_dir, ct_name)
@@ -280,6 +323,36 @@ for (ct in contrasts_cfg) {
     }, error = function(e) message("ORA KEGG dotplot failed: ", e$message))
   }
 
+  # ── Reactome plots (human only) ────────────────────────────────────────────
+  if (!is.null(gsea_reactome) && nrow(as.data.frame(gsea_reactome)) > 0) {
+    tryCatch({
+      p <- dotplot(gsea_reactome, showCategory = 15, split = ".sign") +
+        facet_grid(. ~ .sign) +
+        labs(
+          title    = paste("GSEA \u2014 Reactome Pathways:", ct_name),
+          subtitle = "Normalized Enrichment Score (NES), BH-adjusted p < 0.1"
+        ) +
+        theme_pub() +
+        theme(axis.text.y = element_text(size = 8.5),
+              legend.position = "right")
+      save_plot_safe(p, file.path(ct_plot_dir, "gsea_reactome_dotplot.pdf"), w = 14, h = 8)
+    }, error = function(e) message("GSEA Reactome dotplot failed: ", e$message))
+  }
+
+  if (!is.null(ora_reactome) && nrow(as.data.frame(ora_reactome)) > 0) {
+    tryCatch({
+      p <- dotplot(ora_reactome, showCategory = 15) +
+        labs(
+          title    = paste("ORA \u2014 Reactome Pathways:", ct_name),
+          subtitle = sprintf("Significant genes: %d  |  BH-adjusted p < %s", length(sig_entrez), padj_thr)
+        ) +
+        theme_pub() +
+        theme(axis.text.y = element_text(size = 9),
+              legend.position = "right")
+      save_plot_safe(p, file.path(ct_plot_dir, "ora_reactome_dotplot.pdf"), w = 10, h = 7)
+    }, error = function(e) message("ORA Reactome dotplot failed: ", e$message))
+  }
+
   # ── Save full result tables as CSV ──────────────────────────────────────────
   ct_csv_dir <- file.path(output_dir, "enrichment", "tables", ct_name)
   dir.create(ct_csv_dir, showWarnings = FALSE, recursive = TRUE)
@@ -305,21 +378,33 @@ for (ct in contrasts_cfg) {
     file.path(ct_csv_dir, "ora_go.csv"))
   if (!is.null(ora_kegg))  save_csv_safe(ora_kegg,
     file.path(ct_csv_dir, "ora_kegg.csv"))
+  if (!is.null(gsea_reactome)) save_csv_safe(gsea_reactome,
+    file.path(ct_csv_dir, "gsea_reactome.csv"))
+  if (!is.null(ora_reactome))  save_csv_safe(ora_reactome,
+    file.path(ct_csv_dir, "ora_reactome.csv"))
 
   # ── Write JSON ────────────────────────────────────────────────────────────────
+  plots_list <- list(
+    gsea_go_dotplot   = file.path(ct_plot_dir, "gsea_go_dotplot.pdf"),
+    gsea_kegg_dotplot = file.path(ct_plot_dir, "gsea_kegg_dotplot.pdf"),
+    ora_go_dotplot    = file.path(ct_plot_dir, "ora_go_dotplot.pdf"),
+    ora_kegg_dotplot  = file.path(ct_plot_dir, "ora_kegg_dotplot.pdf")
+  )
+  if (is_human) {
+    plots_list$gsea_reactome_dotplot <- file.path(ct_plot_dir, "gsea_reactome_dotplot.pdf")
+    plots_list$ora_reactome_dotplot  <- file.path(ct_plot_dir, "ora_reactome_dotplot.pdf")
+  }
+
   enrich_result <- list(
-    contrast_name = ct_name,
-    ora_skipped   = ora_skipped,
-    gsea_go       = result_to_df(gsea_go),
-    gsea_kegg     = result_to_df(gsea_kegg),
-    ora_go        = result_to_df(ora_go),
-    ora_kegg      = result_to_df(ora_kegg),
-    plots         = list(
-      gsea_go_dotplot   = file.path(ct_plot_dir, "gsea_go_dotplot.pdf"),
-      gsea_kegg_dotplot = file.path(ct_plot_dir, "gsea_kegg_dotplot.pdf"),
-      ora_go_dotplot    = file.path(ct_plot_dir, "ora_go_dotplot.pdf"),
-      ora_kegg_dotplot  = file.path(ct_plot_dir, "ora_kegg_dotplot.pdf")
-    )
+    contrast_name  = ct_name,
+    ora_skipped    = ora_skipped,
+    gsea_go        = result_to_df(gsea_go),
+    gsea_kegg      = result_to_df(gsea_kegg),
+    ora_go         = result_to_df(ora_go),
+    ora_kegg       = result_to_df(ora_kegg),
+    gsea_reactome  = result_to_df(gsea_reactome),
+    ora_reactome   = result_to_df(ora_reactome),
+    plots          = plots_list
   )
 
   write(toJSON(enrich_result, auto_unbox = TRUE, pretty = TRUE, null = "null"),

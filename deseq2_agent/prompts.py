@@ -171,7 +171,7 @@ DE_REVIEW_PROMPT = ChatPromptTemplate.from_messages([
 PATHWAY_REVIEW_PROMPT = ChatPromptTemplate.from_messages([
     (
         "system",
-        """你是一位专业的系统生物学和通路分析专家，熟悉GO、KEGG通路数据库及GSEA/ORA富集分析方法。
+        """你是一位专业的系统生物学和通路分析专家，熟悉GO、KEGG、Reactome通路数据库及GSEA/ORA富集分析方法。
 你能够从富集结果中提炼出连贯的生物学主题，并将其与差异表达数据整合解读。
 
 解读原则：
@@ -180,6 +180,7 @@ PATHWAY_REVIEW_PROMPT = ChatPromptTemplate.from_messages([
 3. 区分统计显著性和生物学相关性
 4. 识别意外发现：与假设相悖但统计显著的通路
 5. 说明缺失的预期通路：基于DE结果应该出现但未出现的通路
+6. 对于人类样本，整合Reactome通路分析结果，与GO/KEGG结果交叉验证
 
 不得：
 - 引用富集结果中不存在的通路
@@ -219,6 +220,7 @@ REPORT_NARRATIVE_PROMPT = ChatPromptTemplate.from_messages([
 3. 各叙述段落应将统计结果与生物学意义相结合
 4. key_findings按优先级排序（high=直接回答科学假说，medium=重要支持证据，low=探索性发现）
 5. limitations应客观反映数据和方法的局限性
+6. 若提供了edgeR敏感性分析结果，在方法段落中简要提及交叉验证，在结论中评述结果的方法学稳健性
 
 不得：
 - 夸大统计相关性的因果意义

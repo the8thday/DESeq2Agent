@@ -77,8 +77,8 @@ def parse_args():
     parser.add_argument(
         "--provider",
         default="openai",
-        choices=["openai", "deepseek"],
-        help="LLM provider",
+        choices=["openai", "deepseek", "deepseek-reasoner", "anthropic", "google"],
+        help="LLM provider (openai, deepseek, deepseek-reasoner, anthropic, google)",
     )
     parser.add_argument(
         "--padj",
