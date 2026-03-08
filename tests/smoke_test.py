@@ -17,6 +17,10 @@ try:
     from deseq2_agent.config import LLMConfig
     print("✅ Imports successful")
 
+    print("\nTesting DeepSeek dependency...")
+    import langchain_deepseek
+    print("✅ langchain-deepseek available")
+
     print("\nTesting Pydantic models...")
     from deseq2_agent.models import DesignDecision, QCDecision, DEReviewOutput
     # Verify Pydantic v2 usage

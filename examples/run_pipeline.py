@@ -164,6 +164,8 @@ def main():
             contrasts=contrasts,
             species=species,
             output_dir=args.output,
+            padj_threshold=padj,
+            lfc_threshold=lfc,
         )
     except Exception as e:
         logger.error(f"Pipeline failed: {e}", exc_info=True)

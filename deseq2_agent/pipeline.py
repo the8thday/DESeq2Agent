@@ -156,6 +156,8 @@ class DESeq2Pipeline:
         contrasts: Optional[List[dict]] = None,
         species: str = "human",
         output_dir: str = "./results/",
+        padj_threshold: float = 0.05,
+        lfc_threshold: float = 1.0,
     ) -> PipelineResults:
         """Execute the full pipeline.
 
@@ -232,6 +234,8 @@ class DESeq2Pipeline:
             species=species,
             output_dir=output_dir,
             mode=self.mode,
+            padj_threshold=padj_threshold,
+            lfc_threshold=lfc_threshold,
         )
 
         runner = RScriptRunner(output_dir)

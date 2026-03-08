@@ -28,7 +28,7 @@ class HTMLReportBuilder:
     def _pdf_to_png(pdf_path: Path) -> Optional[Path]:
         """Convert a single-page PDF to a temporary PNG using sips (macOS)."""
         png_path = pdf_path.with_suffix(".png")
-        if png_path.exists():
+        if png_path.exists() and png_path.stat().st_mtime >= pdf_path.stat().st_mtime:
             return png_path
         try:
             result = subprocess.run(
